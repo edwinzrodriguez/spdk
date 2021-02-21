@@ -169,3 +169,6 @@ CONFIG_RAID5=n
 
 # Build with IDXD support
 CONFIG_IDXD=n
+
+# Build with RocksDB support
+CONFIG_ROCKSDB=n
