@@ -94,6 +94,9 @@ union spdk_nvme_feat_key_value_config {
 };
 
 typedef __uint128_t spdk_nvme_kv_key_t;
+SPDK_STATIC_ASSERT(sizeof(spdk_nvme_kv_key_t) == KV_MAX_KEY_SIZE, "Incorrect key size");
+
+
 union spdk_nvme_kv_cmd_cdw10 {
 	uint32_t raw;
 	struct {
@@ -328,6 +331,18 @@ struct spdk_nvme_kv_ns_data {
 	uint8_t			vendor_specific[256];
 };
 SPDK_STATIC_ASSERT(sizeof(struct spdk_nvme_kv_ns_data) == 4096, "Incorrect size");
+
+struct spdk_nvme_kv_ns_list_key_data {
+	uint16_t kl; /** Key length */
+	spdk_nvme_kv_key_t key;
+	uint8_t pad[(sizeof(uint16_t) + sizeof(spdk_nvme_kv_key_t)) % 4];
+};
+SPDK_STATIC_ASSERT(sizeof(struct spdk_nvme_kv_ns_list_key_data) % 4 == 0, "Incorrect size");
+
+struct spdk_nvme_kv_ns_list_data {
+	uint32_t     nrk; /** Number of returned keys */
+	struct spdk_nvme_kv_ns_list_key_data keys[];
+};
 
 void
 spdk_nvme_kv_cmd_set_key(struct spdk_nvme_kv_cmd *cmd, spdk_nvme_kv_key_t key);

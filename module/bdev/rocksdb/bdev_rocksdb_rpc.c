@@ -76,7 +76,7 @@ rpc_bdev_rocksdb_create(struct spdk_jsonrpc_request *request,
 	if (spdk_json_decode_object(params, rpc_construct_null_decoders,
 				    SPDK_COUNTOF(rpc_construct_null_decoders),
 				    &req)) {
-		SPDK_DEBUGLOG(bdev_null, "spdk_json_decode_object failed\n");
+		SPDK_DEBUGLOG(bdev_rocksdb, "spdk_json_decode_object failed\n");
 		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
 						 "spdk_json_decode_object failed");
 		goto cleanup;

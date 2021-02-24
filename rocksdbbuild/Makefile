@@ -50,6 +50,7 @@ ROCKSDB_DEBUGLEVEL = 0
 endif
 ifeq ($(CONFIG_SHARED),y)
 ROCKSDB_LIBRARY_TARGET := shared_lib
+ENV_LINKER_ARGS += -Wl,-rpath-link $(ROCKSDB_USER_DIR)
 else
 ROCKSDB_LIBRARY_TARGET := static_lib
 endif

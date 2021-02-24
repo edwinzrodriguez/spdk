@@ -44,6 +44,7 @@
 #include "spdk/bdev_module.h"
 #include "spdk/log.h"
 #include "spdk/nvme_kv.h"
+#include "spdk/nvmf_transport.h"
 
 #include "rocksdb/c.h"
 
@@ -55,6 +56,8 @@ struct rocksdb_bdev {
 	char *db_backup_path;
 	rocksdb_t *db;
 	rocksdb_backup_engine_t *be;
+	rocksdb_writeoptions_t *writeoptions;
+	rocksdb_readoptions_t *readoptions;
 	TAILQ_ENTRY(rocksdb_bdev)	tailq;
 };
 
@@ -106,6 +109,203 @@ bdev_rocksdb_abort_io(struct rocksdb_io_channel *ch, struct spdk_bdev_io *bio_to
 	return false;
 }
 
+static void bdev_rocksdb_store(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
+{
+	enum spdk_bdev_io_status status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
+	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
+	if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
+		char key_str[KV_MAX_KEY_SIZE];
+		spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
+		SPDK_DEBUGLOG(bdev_rocksdb, "store key:%s buf:%p, len: %u\n", key_str,
+			      bdev_io->u.kv.buffer, bdev_io->u.kv.buffer_len);
+	}
+	do {
+		char *err = NULL;
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_store.kl != KV_MAX_KEY_SIZE) {
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
+			break;
+		}
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_store.so.no_overwrite) {
+			/** TODO: Need to figure out how to do this with rocksdb */
+		}
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_store.so.overwrite_only) {
+			/** TODO: Need to figure out how to do this with rocksdb */
+		}
+		rocksdb_put(rocksdb_disk->db, rocksdb_disk->writeoptions, (char *)&bdev_io->u.kv.key,
+			    sizeof(&bdev_io->u.kv.key), bdev_io->u.kv.buffer, bdev_io->u.kv.buffer_len, &err);
+		if (err) {
+			/** TODO: I know this is wrong, but until this is a C++ source file this is all the status I can get */
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+		}
+	} while (0);
+	spdk_bdev_io_complete(bdev_io, status);
+}
+
+static void bdev_rocksdb_retrieve(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
+{
+	enum spdk_bdev_io_status status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
+	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
+	do {
+		char *err = NULL;
+		size_t len;
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_retrieve.kl != KV_MAX_KEY_SIZE) {
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
+			break;
+		}
+		char *returned_value = rocksdb_get(rocksdb_disk->db, rocksdb_disk->readoptions,
+						   (char *)&bdev_io->u.kv.key, sizeof(&bdev_io->u.kv.key), &len, &err);
+		if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
+			char key_str[KV_MAX_KEY_SIZE];
+			spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
+			SPDK_DEBUGLOG(bdev_rocksdb, "retrieve key:%s buf:%p, len: %zu, buffer_len: %u\n", key_str,
+				      returned_value, len, bdev_io->u.kv.buffer_len);
+		}
+		if (err || returned_value == NULL) {
+			/** TODO: I know this is wrong, but until this is a C++ source file this is all the status I can get */
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+		} else {
+			assert(bdev_io->u.kv.buffer != NULL);
+			memcpy(bdev_io->u.kv.buffer, returned_value, spdk_min(len, bdev_io->u.kv.buffer_len));
+			free(returned_value);
+		}
+	} while (0);
+	spdk_bdev_io_complete(bdev_io, status);
+}
+
+static void bdev_rocksdb_delete_key(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
+{
+	enum spdk_bdev_io_status status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
+	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
+	do {
+		char *err = NULL;
+		if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
+			char key_str[KV_MAX_KEY_SIZE];
+			spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
+			SPDK_DEBUGLOG(bdev_rocksdb, "delete key:%s\n", key_str);
+		}
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_del.kl != KV_MAX_KEY_SIZE) {
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
+			break;
+		}
+		rocksdb_delete(rocksdb_disk->db, rocksdb_disk->writeoptions, (char *)&bdev_io->u.kv.key,
+			       sizeof(&bdev_io->u.kv.key), &err);
+		if (err) {
+			/** TODO: I know this is wrong, but until this is a C++ source file this is all the status I can get */
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+		} else {
+			req->rsp->nvme_cpl.status.sc =
+				SPDK_NVME_SC_SUCCESS; /** What should be the result in this case? */
+		}
+	} while (0);
+	spdk_bdev_io_complete(bdev_io, status);
+}
+
+static void bdev_rocksdb_exist(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
+{
+	enum spdk_bdev_io_status status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
+	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
+	char *err = NULL;
+	if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
+		char key_str[KV_MAX_KEY_SIZE];
+		spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
+		SPDK_DEBUGLOG(bdev_rocksdb, "exist key:%s\n", key_str);
+	}
+	do {
+		rocksdb_iterator_t *iter = rocksdb_create_iterator(rocksdb_disk->db, rocksdb_disk->readoptions);
+		if (!iter) {
+			SPDK_ERRLOG("rocksdb exist failed to allocate iter\n");
+			status = SPDK_BDEV_IO_STATUS_FAILED;
+			break;
+		}
+		rocksdb_iter_seek(iter, (char *)&bdev_io->u.kv.key, sizeof(&bdev_io->u.kv.key));
+		rocksdb_iter_get_error(iter, &err);
+		if (err) {
+			/** TODO: I know this is wrong, but until this is a C++ source file this is all the status I can get */
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+			break;
+		}
+		size_t key_len;
+		const char *key = rocksdb_iter_key(iter, &key_len);
+		if (key_len != KV_MAX_KEY_SIZE) {
+			SPDK_ERRLOG("Invalid key length %zu\n", key_len);
+			req->rsp->nvme_cpl.status.sc =
+				SPDK_NVME_SC_KV_INVALID_KEY_SIZE; /** What should be the result in this case? */
+			break;
+		}
+		if (memcmp(key, &bdev_io->u.kv.key, spdk_min(key_len,
+				req->cmd->nvme_kv_cmd.cdw11_bits.kv_exist.kl)) == 0) {
+			req->rsp->nvme_cpl.status.sc =
+				SPDK_NVME_SC_SUCCESS; /** What should be the result in this case? */
+		} else {
+			req->rsp->nvme_cpl.status.sc =
+				SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST; /** What should be the result in this case? */
+		}
+		rocksdb_iter_destroy(iter);
+	} while (0);
+	spdk_bdev_io_complete(bdev_io, status);
+}
+
+static void bdev_rocksdb_list(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
+{
+	enum spdk_bdev_io_status status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
+	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
+	char *err = NULL;
+	do {
+		if (req->cmd->nvme_kv_cmd.cdw11_bits.kv_list.kl != KV_MAX_KEY_SIZE) {
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
+			break;
+		}
+		rocksdb_iterator_t *iter = rocksdb_create_iterator(rocksdb_disk->db, rocksdb_disk->readoptions);
+		if (!iter) {
+			SPDK_ERRLOG("rocksdb exist failed to allocate iter\n");
+			status = SPDK_BDEV_IO_STATUS_FAILED;
+			break;
+		}
+
+		rocksdb_iter_seek(iter, (char *)&bdev_io->u.kv.key, sizeof(&bdev_io->u.kv.key));
+		rocksdb_iter_get_error(iter, &err);
+		if (err) {
+			/** TODO: I know this is wrong, but until this is a C++ source file this is all the status I can get */
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+		}
+		struct spdk_nvme_kv_ns_list_data *list_data = (struct spdk_nvme_kv_ns_list_data *)
+				bdev_io->u.kv.buffer;
+		uint32_t bytes_left = bdev_io->u.kv.buffer_len;
+		if (bytes_left < sizeof(*list_data)) {
+			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_INVALID_FIELD; /** Is there a better status code? */
+			break;
+		}
+		list_data->nrk = 0;
+		bytes_left -= sizeof(list_data->nrk);
+		struct spdk_nvme_kv_ns_list_key_data *key_data = &list_data->keys[0];
+		while (bytes_left >= sizeof(struct spdk_nvme_kv_ns_list_key_data)) {
+			size_t key_len;
+			const char *key = rocksdb_iter_key(iter, &key_len);
+			if (key_len != KV_MAX_KEY_SIZE) {
+				SPDK_ERRLOG("Invalid key length %zu\n", key_len);
+				req->rsp->nvme_cpl.status.sc =
+					SPDK_NVME_SC_KV_INVALID_KEY_SIZE; /** What should be the result in this case? */
+				break;
+			}
+			key_data->kl = KV_MAX_KEY_SIZE;
+			memcpy(&key_data->key, key, KV_MAX_KEY_SIZE);
+			list_data->nrk++;
+			key_data++;
+			bytes_left -= sizeof(struct spdk_nvme_kv_ns_list_key_data);
+		}
+
+
+		rocksdb_iter_destroy(iter);
+	} while (0);
+
+	spdk_bdev_io_complete(bdev_io, status);
+}
+
 static void
 bdev_rocksdb_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bdev_io)
 {
@@ -113,15 +313,19 @@ bdev_rocksdb_submit_request(struct spdk_io_channel *_ch, struct spdk_bdev_io *bd
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
-		TAILQ_INSERT_TAIL(&ch->io, bdev_io, module_link);
+		bdev_rocksdb_retrieve(_ch, bdev_io);
 		break;
 	case SPDK_BDEV_IO_TYPE_KV_STORE:
-		TAILQ_INSERT_TAIL(&ch->io, bdev_io, module_link);
+		bdev_rocksdb_store(_ch, bdev_io);
 		break;
 	case SPDK_BDEV_IO_TYPE_KV_EXIST:
+		bdev_rocksdb_exist(_ch, bdev_io);
+		break;
 	case SPDK_BDEV_IO_TYPE_KV_LIST:
+		bdev_rocksdb_list(_ch, bdev_io);
+		break;
 	case SPDK_BDEV_IO_TYPE_KV_DELETE:
-		TAILQ_INSERT_TAIL(&ch->io, bdev_io, module_link);
+		bdev_rocksdb_delete_key(_ch, bdev_io);
 		break;
 	case SPDK_BDEV_IO_TYPE_ABORT:
 		if (bdev_rocksdb_abort_io(ch, bdev_io->u.abort.bio_to_abort)) {
@@ -263,12 +467,33 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	/** open DB */
 	char *err = NULL;
 	rocksdb_disk->db = rocksdb_open(options, rocksdb_disk->db_path, &err);
-	assert(!err);
+	if (err) {
+		SPDK_ERRLOG("%s\n", err);
+		free(rocksdb_disk);
+		return -EINVAL;
+	}
 
 	if (rocksdb_disk->db_backup_path) {
 		/** open Backup Engine that we will use for backing up our database */
 		rocksdb_disk->be = rocksdb_backup_engine_open(options, rocksdb_disk->db_backup_path, &err);
-		assert(!err);
+		if (err) {
+			SPDK_ERRLOG("%s\n", err);
+			free(rocksdb_disk);
+			return -EINVAL;
+		}
+	}
+	rocksdb_disk->writeoptions = rocksdb_writeoptions_create();
+	if (!rocksdb_disk->writeoptions) {
+		SPDK_ERRLOG("%s\n", "Failed to allocate write options\n");
+		free(rocksdb_disk);
+		return -ENOMEM;
+	}
+
+	rocksdb_disk->readoptions = rocksdb_readoptions_create();
+	if (!rocksdb_disk->readoptions) {
+		SPDK_ERRLOG("%s\n", "Failed to allocate read options\n");
+		free(rocksdb_disk);
+		return -ENOMEM;
 	}
 
 	*bdev = &(rocksdb_disk->bdev);
@@ -346,6 +571,7 @@ bdev_rocksdb_initialize(void)
 	g_rocksdb_read_buf = spdk_zmalloc(SPDK_BDEV_LARGE_BUF_MAX_SIZE, 0, NULL,
 					  SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
 	if (g_rocksdb_read_buf == NULL) {
+		SPDK_DEBUGLOG(bdev_rocksdb, "bdev_rocksdb_initialize Failed to allocate memory buffer\n");
 		return -1;
 	}
 
