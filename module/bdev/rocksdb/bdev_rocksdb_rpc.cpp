@@ -32,11 +32,13 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+extern "C" {
 #include "spdk/rpc.h"
 #include "spdk/util.h"
 #include "spdk/string.h"
 #include "spdk/bdev_module.h"
 #include "spdk/log.h"
+}
 
 #include "bdev_rocksdb.h"
 
@@ -136,7 +138,7 @@ static const struct spdk_json_object_decoder rpc_delete_rocksdb_decoders[] = {
 static void
 rpc_bdev_rocksdb_delete_cb(void *cb_arg, int bdeverrno)
 {
-	struct spdk_jsonrpc_request *request = cb_arg;
+	struct spdk_jsonrpc_request *request = (struct spdk_jsonrpc_request *)cb_arg;
 	struct spdk_json_write_ctx *w = spdk_jsonrpc_begin_result(request);
 
 	spdk_json_write_bool(w, bdeverrno == 0);
