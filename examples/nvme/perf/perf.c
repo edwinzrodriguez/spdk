@@ -758,12 +758,6 @@ kv_setup_payload(struct perf_task *task, uint8_t pattern)
 	void *buf;
 	int rc;
 
-	if (task->is_read && cons_key < prod_key) {
-		task->kv_key = __sync_fetch_and_add(&cons_key, 1);
-	} else {
-		task->is_read = false;
-		task->kv_key = __sync_fetch_and_add(&prod_key, 1);
-	}
 	buf = spdk_dma_zmalloc(g_io_size_bytes, g_io_align, NULL);
 	if (buf == NULL) {
 		fprintf(stderr, "task->buf spdk_dma_zmalloc failed\n");
@@ -791,6 +785,13 @@ kv_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 	ns_ctx->u.nvme.last_qpair++;
 	if (ns_ctx->u.nvme.last_qpair == ns_ctx->u.nvme.num_active_qpairs) {
 		ns_ctx->u.nvme.last_qpair = 0;
+	}
+
+	if (task->is_read && cons_key < prod_key) {
+		task->kv_key = __sync_fetch_and_add(&cons_key, 1);
+	} else {
+		task->is_read = false;
+		task->kv_key = __sync_fetch_and_add(&prod_key, 1);
 	}
 
 	if (task->is_read) {

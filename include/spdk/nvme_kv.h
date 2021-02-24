@@ -50,7 +50,7 @@ extern "C" {
 #define KV_MAX_KEY_SIZE (16)
 #define KV_MIN_KEY_SIZE (4)
 #define KV_MAX_VALUE_SIZE (1<<21)
-
+#define KV_KEY_STRING_LEN (37)
 
 /**
  * KV command status codes

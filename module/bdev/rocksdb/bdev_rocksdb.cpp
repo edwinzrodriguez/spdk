@@ -120,7 +120,7 @@ static void bdev_rocksdb_store(struct spdk_io_channel *_ch, struct spdk_bdev_io 
 	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
 	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
 	if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
-		char key_str[KV_MAX_KEY_SIZE];
+		char key_str[KV_KEY_STRING_LEN];
 		spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
 		SPDK_DEBUGLOG(bdev_rocksdb, "store key:%s buf:%p, len: %u\n", key_str,
 			      bdev_io->u.kv.buffer, bdev_io->u.kv.buffer_len);
@@ -161,7 +161,7 @@ static void bdev_rocksdb_retrieve(struct spdk_io_channel *_ch, struct spdk_bdev_
 		rocksdb::Status s = rocksdb_disk->db->Get(rocksdb_disk->readoptions,
 				    rocksdb::Slice((char *)&bdev_io->u.kv.key, sizeof(&bdev_io->u.kv.key)), &tmp);
 		if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
-			char key_str[KV_MAX_KEY_SIZE];
+			char key_str[KV_KEY_STRING_LEN];
 			spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
 			SPDK_DEBUGLOG(bdev_rocksdb, "retrieve key:%s buf:%p, len: %zu, buffer_len: %u\n", key_str,
 				      tmp.data(), tmp.size(), bdev_io->u.kv.buffer_len);
@@ -187,7 +187,7 @@ static void bdev_rocksdb_delete_key(struct spdk_io_channel *_ch, struct spdk_bde
 	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
 	do {
 		if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
-			char key_str[KV_MAX_KEY_SIZE];
+			char key_str[KV_KEY_STRING_LEN];
 			spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
 			SPDK_DEBUGLOG(bdev_rocksdb, "delete key:%s\n", key_str);
 		}
@@ -214,7 +214,7 @@ static void bdev_rocksdb_exist(struct spdk_io_channel *_ch, struct spdk_bdev_io 
 	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *)bdev_io->bdev->ctxt;
 	struct spdk_nvmf_request *req = (struct spdk_nvmf_request *)bdev_io->internal.caller_ctx;
 	if (SPDK_DEBUGLOG_FLAG_ENABLED("bdev_rocksdb")) {
-		char key_str[KV_MAX_KEY_SIZE];
+		char key_str[KV_KEY_STRING_LEN];
 		spdk_kv_key_fmt_lower(key_str, sizeof(key_str), &bdev_io->u.kv.key);
 		SPDK_DEBUGLOG(bdev_rocksdb, "exist key:%s\n", key_str);
 	}
