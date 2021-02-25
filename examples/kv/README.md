@@ -119,6 +119,16 @@ After stopping nvmf_tgt on ssan-rx2560-03, you can dump out the DB to txt files 
   sudo rocksdb/sst_dump --file=/tmp/rocksdb --command=raw
 ```
 
+# RocksDB using blobfs
+```
+  sudo scripts/rpc.py bdev_nvme_attach_controller -t PCIe -a "0000:03:00.0" -b Nvme0
+  sudo scripts/rpc.py bdev_rocksdb_create KV0 /tmp/rocksdb --bdev Nvme0n1 --blobfs-cache-size 256
+  sudo scripts/rpc.py nvmf_create_transport -t TCP -u 16384 -m 8 -c 8192
+  sudo scripts/rpc.py nvmf_create_subsystem nqn.2016-06.io.spdk:cnode1 -a -s SPDK00000000000001 -d SPDK_Controller1
+  sudo scripts/rpc.py nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 KV0
+  sudo scripts/rpc.py nvmf_subsystem_add_listener nqn.2016-06.io.spdk:cnode1 -t tcp -a 127.0.0.1 -s 4420
+```
+
 # KV key format for human consumption
 
 ```

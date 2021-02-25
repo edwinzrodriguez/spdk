@@ -1,4 +1,4 @@
-/*-
+/*
  *   BSD LICENSE
  *
  *   Copyright (c) Intel Corporation. All rights reserved.
@@ -32,44 +32,16 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef SPDK_BDEV_ROCKSDB_H
-#define SPDK_BDEV_ROCKSDB_H
+#ifndef SPDK_BDEV_ROCKSDB_ENV_H
+#define SPDK_BDEV_ROCKSDB_ENV_H
 
 #include "spdk/stdinc.h"
-
-typedef void (*spdk_delete_null_complete)(void *cb_arg, int bdeverrno);
-
-struct spdk_bdev;
-struct spdk_uuid;
-
-struct spdk_rocksdb_bdev_opts {
-	const char *name;
-	const struct spdk_uuid *uuid;
-	const char *db_path;
-	const char *db_backup_path;
-	uint32_t wbs_mb; /** Write buffer cache in MB */
-	bool compression;
-	int compaction_style; /** level=0, universal=1, fifo=3, none=3 */
-	bool sync_write;
-	bool disable_write_ahead;
-	uint32_t background_threads_low;
-	uint32_t background_threads_high;
-	uint32_t cache_size_mb; /** Block cache size in MB */
-	uint32_t optimize_compaction_mb; /** memtable memory budget for compaction method */
-	const char *bdev;
-	uint32_t blobfs_cache_size; /** Cache size for blobfs */
-};
-
-int bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts *opts);
-
-/**
- * Delete null bdev.
- *
- * \param bdev Pointer to null bdev.
- * \param cb_fn Function to call after deletion.
- * \param cb_arg Argument to pass to cb_fn.
+#include "rocksdb/db.h"
+/*
+ *   Returns a new environment that is used for SPDK environment.
  */
-void bdev_rocksdb_delete(struct spdk_bdev *bdev, spdk_delete_null_complete cb_fn,
-			 void *cb_arg);
+void NewSpdkRocksdbEnv(rocksdb::Env *base_env, const std::string &fsname,
+		       const std::string &bdevname, uint64_t cache_size_in_mb,
+		       void (*env_cb)(void *cb_arg), void *cb_arg);
 
-#endif /* SPDK_BDEV_ROCKSDB_H */
+#endif /* SPDK_BDEV_ROCKSDB_ENV_H */

@@ -56,6 +56,8 @@ struct rpc_construct_null {
 	uint32_t background_threads_high;
 	uint32_t cache_size_mb;
 	uint32_t optimize_compaction_mb;
+	char *bdev;
+	uint32_t blobfs_cache_size;
 };
 
 static void
@@ -67,7 +69,6 @@ free_rpc_construct_null(struct rpc_construct_null *req)
 
 static const struct spdk_json_object_decoder rpc_construct_null_decoders[] = {
 	{"name", offsetof(struct rpc_construct_null, name), spdk_json_decode_string},
-	{"uuid", offsetof(struct rpc_construct_null, uuid), spdk_json_decode_string, true},
 	{"db_path", offsetof(struct rpc_construct_null, db_path), spdk_json_decode_string},
 	{"db_backup_path", offsetof(struct rpc_construct_null, db_backup_path), spdk_json_decode_string, true},
 	{"wbs_mb", offsetof(struct rpc_construct_null, wbs_mb), spdk_json_decode_uint32, true},
@@ -79,6 +80,8 @@ static const struct spdk_json_object_decoder rpc_construct_null_decoders[] = {
 	{"background_threads_high", offsetof(struct rpc_construct_null, background_threads_high), spdk_json_decode_uint32, true},
 	{"cache_size_mb", offsetof(struct rpc_construct_null, cache_size_mb), spdk_json_decode_uint32, true},
 	{"optimize_compaction_mb", offsetof(struct rpc_construct_null, optimize_compaction_mb), spdk_json_decode_uint32, true},
+	{"bdev", offsetof(struct rpc_construct_null, bdev), spdk_json_decode_string, true},
+	{"blobfs_cache_size", offsetof(struct rpc_construct_null, blobfs_cache_size), spdk_json_decode_uint32, true},
 };
 
 static void
@@ -130,6 +133,7 @@ rpc_bdev_rocksdb_create(struct spdk_jsonrpc_request *request,
 	opts.background_threads_high = req.background_threads_high;
 	opts.cache_size_mb = req.cache_size_mb;
 	opts.optimize_compaction_mb = req.optimize_compaction_mb;
+	opts.bdev = req.bdev;
 	rc = bdev_rocksdb_create(&bdev, &opts);
 	if (rc) {
 		spdk_jsonrpc_send_error_response(request, rc, spdk_strerror(-rc));

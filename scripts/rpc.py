@@ -436,7 +436,9 @@ if __name__ == "__main__":
                                                 background_threads_low=args.background_threads_low,
                                                 background_threads_high=args.background_threads_high,
                                                 cache_size_mb=args.cache_size_mb,
-                                                optimize_compaction_mb=args.optimize_compaction_mb))
+                                                optimize_compaction_mb=args.optimize_compaction_mb,
+                                                bdev=args.bdev,
+                                                blobfs_cache_size=args.blobfs_cache_size))
 
     p = subparsers.add_parser('bdev_rocksdb_create', aliases=['construct_rocksdb_bdev'],
                               help='Add a kv bdev with rocksdb backend')
@@ -455,6 +457,8 @@ if __name__ == "__main__":
     p.add_argument('--background-threads-high', help='Number of background worker threads in high pri pool', type=int, default=0)
     p.add_argument('--cache-size-mb', help='Block cache size in MB', type=int, default=0)
     p.add_argument('--optimize-compaction-mb', help='memtable memory budget for compaction method', type=int, default=0)
+    p.add_argument('--bdev', help='Name of bdev for blobfs')
+    p.add_argument('--blobfs-cache-size', help='Cache size for blobfs in MB', type=int, default=0)
     p.set_defaults(func=bdev_rocksdb_create)
 
     def bdev_rocksdb_delete(args):

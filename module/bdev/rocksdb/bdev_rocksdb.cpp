@@ -56,6 +56,7 @@ extern "C" {
 #include "rocksdb/cache.h"
 
 #include "bdev_rocksdb.h"
+#include "bdev_rocksdb_env.h"
 
 struct rocksdb_bdev {
 	struct spdk_bdev	bdev;
@@ -70,8 +71,11 @@ struct rocksdb_bdev {
 	uint32_t background_threads_high;
 	uint32_t cache_size_mb; /** Block cache size in MB */
 	uint32_t optimize_compaction_mb; /** memtable memory budget for compaction method */
+	const char *bdev_name;
+	uint32_t blobfs_cache_size;
 	rocksdb::DB *db;
 	rocksdb::BackupEngine *be;
+	rocksdb::Options options;
 	rocksdb::WriteOptions writeoptions;
 	rocksdb::ReadOptions readoptions;
 	TAILQ_ENTRY(rocksdb_bdev)	tailq;
@@ -466,6 +470,10 @@ bdev_rocksdb_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ct
 	spdk_json_write_named_uint32(w, "optimize_compaction_mb", rocksdb_disk->optimize_compaction_mb);
 	spdk_uuid_fmt_lower(uuid_str, sizeof(uuid_str), &bdev->uuid);
 	spdk_json_write_named_string(w, "uuid", uuid_str);
+	if (rocksdb_disk->bdev_name) {
+		spdk_json_write_named_string(w, "bdev", rocksdb_disk->bdev_name);
+		spdk_json_write_named_uint32(w, "blobfs_cache_size", rocksdb_disk->blobfs_cache_size);
+	}
 	spdk_json_write_object_end(w);
 
 	spdk_json_write_object_end(w);
@@ -479,12 +487,38 @@ static const struct spdk_bdev_fn_table rocksdb_fn_table = {
 	.write_config_json	= bdev_rocksdb_write_config_json,
 };
 
+static void
+bdev_rocksdb_env_cb(void *arg)
+{
+	struct rocksdb_bdev *rocksdb_disk = (struct rocksdb_bdev *) arg;
+
+	rocksdb::Status s = rocksdb::DB::Open(rocksdb_disk->options, rocksdb_disk->db_path,
+					      &rocksdb_disk->db);
+	if (!s.ok()) {
+		SPDK_ERRLOG("%s\n", s.ToString().c_str());
+		spdk_bdev_unregister(&rocksdb_disk->bdev, NULL, NULL);
+		delete rocksdb_disk;
+	}
+
+	if (rocksdb_disk->db_backup_path) {
+		/** open Backup Engine that we will use for backing up our database */
+		rocksdb::Status s = rocksdb::BackupEngine::Open(rocksdb_disk->options.env,
+				    rocksdb::BackupableDBOptions(rocksdb_disk->db_backup_path, nullptr, true,
+						    rocksdb_disk->options.info_log.get()),
+				    &rocksdb_disk->be);
+		if (!s.ok()) {
+			SPDK_ERRLOG("%s\n", s.ToString().c_str());
+			spdk_bdev_unregister(&rocksdb_disk->bdev, NULL, NULL);
+			delete rocksdb_disk;
+		}
+	}
+
+}
 int
 bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts *opts)
 {
 	struct rocksdb_bdev *rocksdb_disk;
 	int rc;
-	rocksdb::Options options;
 
 	if (!opts) {
 		SPDK_ERRLOG("No options provided for Null KV bdev.\n");
@@ -496,7 +530,7 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 		return -EINVAL;
 	}
 
-	rocksdb_disk = (struct rocksdb_bdev *)calloc(1, sizeof(*rocksdb_disk));
+	rocksdb_disk = new struct rocksdb_bdev;
 	if (!rocksdb_disk) {
 		SPDK_ERRLOG("could not allocate rocksdb_bdev\n");
 		return -ENOMEM;
@@ -504,19 +538,19 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 
 	rocksdb_disk->bdev.name = strdup(opts->name);
 	if (!rocksdb_disk->bdev.name) {
-		free(rocksdb_disk);
+		delete rocksdb_disk;
 		return -ENOMEM;
 	}
 
 	rocksdb_disk->db_path = strdup(opts->db_path);
 	if (!rocksdb_disk->db_path) {
-		free(rocksdb_disk);
+		delete rocksdb_disk;
 		return -ENOMEM;
 	}
 	if (rocksdb_disk->db_backup_path) {
 		rocksdb_disk->db_backup_path = strdup(opts->db_backup_path);
 		if (!rocksdb_disk->db_backup_path) {
-			free(rocksdb_disk);
+			delete rocksdb_disk;
 			return -ENOMEM;
 		}
 	}
@@ -531,6 +565,20 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	rocksdb_disk->optimize_compaction_mb = opts->optimize_compaction_mb;
 
 	rocksdb_disk->bdev.product_name = strdup("KV Rocksdb disk");
+	rocksdb_disk->bdev_name = strdup(opts->bdev);
+	if (!rocksdb_disk->bdev_name) {
+		delete rocksdb_disk;
+		return -ENOMEM;
+	}
+	rocksdb_disk->blobfs_cache_size = opts->blobfs_cache_size;
+
+	if (opts->bdev) {
+		rocksdb_disk->bdev_name = strdup(opts->bdev);
+		if (!rocksdb_disk->bdev_name) {
+			delete rocksdb_disk;
+			return -ENOMEM;
+		}
+	}
 
 	rocksdb_disk->bdev.write_cache = 0;
 	rocksdb_disk->bdev.blocklen = 1;
@@ -548,17 +596,17 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	rc = spdk_bdev_register(&rocksdb_disk->bdev);
 	if (rc) {
 		free(rocksdb_disk->bdev.name);
-		free(rocksdb_disk);
+		delete rocksdb_disk;
 		return rc;
 	}
 
 	long cpus = sysconf(_SC_NPROCESSORS_ONLN);  /** get # of online cores */
 	if (rocksdb_disk->background_threads_low != 0) {
-		options.max_background_jobs = rocksdb_disk->background_threads_low;
+		rocksdb_disk->options.max_background_jobs = rocksdb_disk->background_threads_low;
 		env->SetBackgroundThreads(rocksdb_disk->background_threads_low, rocksdb::Env::LOW);
 	} else {
-		options.max_background_jobs = spdk_max(cpus / 2, 1);
-		env->SetBackgroundThreads(options.max_background_jobs, rocksdb::Env::LOW);
+		rocksdb_disk->options.max_background_jobs = spdk_max(cpus / 2, 1);
+		env->SetBackgroundThreads(rocksdb_disk->options.max_background_jobs, rocksdb::Env::LOW);
 	}
 	if (rocksdb_disk->background_threads_high != 0) {
 		env->SetBackgroundThreads(rocksdb_disk->background_threads_high, rocksdb::Env::HIGH);
@@ -567,27 +615,27 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	}
 
 	if (!rocksdb_disk->compression) {
-		options.compression = rocksdb::kNoCompression;
+		rocksdb_disk->options.compression = rocksdb::kNoCompression;
 	}
 
-	options.max_background_jobs = 2;
-	options.max_write_buffer_number = 2;
-	options.write_buffer_size = rocksdb_disk->wbs_mb << 20; /* Convert to bytes */
-	options.compaction_style = rocksdb::CompactionStyle(rocksdb_disk->compaction_style);
+	rocksdb_disk->options.max_background_jobs = 2;
+	rocksdb_disk->options.max_write_buffer_number = 2;
+	rocksdb_disk->options.write_buffer_size = rocksdb_disk->wbs_mb << 20; /* Convert to bytes */
+	rocksdb_disk->options.compaction_style = rocksdb::CompactionStyle(rocksdb_disk->compaction_style);
 	if (rocksdb_disk->optimize_compaction_mb) {
-		if (options.compaction_style == rocksdb::kCompactionStyleLevel) {
-			options.OptimizeLevelStyleCompaction(512 * 1024  * 1024);
+		if (rocksdb_disk->options.compaction_style == rocksdb::kCompactionStyleLevel) {
+			rocksdb_disk->options.OptimizeLevelStyleCompaction(512 * 1024  * 1024);
 		}
-		if (options.compaction_style == rocksdb::kCompactionStyleUniversal) {
-			options.OptimizeUniversalStyleCompaction(512 * 1024  * 1024);
+		if (rocksdb_disk->options.compaction_style == rocksdb::kCompactionStyleUniversal) {
+			rocksdb_disk->options.OptimizeUniversalStyleCompaction(512 * 1024  * 1024);
 		}
 	}
-	options.max_open_files = 500000;
+	rocksdb_disk->options.max_open_files = 500000;
 
-	options.max_background_compactions = 4;
-	options.max_background_flushes = 2;
-	options.bytes_per_sync = 1048576;
-	options.compaction_pri = rocksdb::kMinOverlappingRatio;
+	rocksdb_disk->options.max_background_compactions = 4;
+	rocksdb_disk->options.max_background_flushes = 2;
+	rocksdb_disk->options.bytes_per_sync = 1048576;
+	rocksdb_disk->options.compaction_pri = rocksdb::kMinOverlappingRatio;
 
 	rocksdb::BlockBasedTableOptions table_options;
 	table_options.block_size = 16 * 1024;
@@ -597,33 +645,22 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 		table_options.block_cache = rocksdb::NewLRUCache(rocksdb_disk->cache_size_mb, 6, false, 0.0);
 
 	}
-	options.table_factory.reset(
+	rocksdb_disk->options.table_factory.reset(
 		rocksdb::NewBlockBasedTableFactory(table_options));
 
 	rocksdb_disk->writeoptions.sync = rocksdb_disk->sync_write;
 	rocksdb_disk->writeoptions.disableWAL = rocksdb_disk->disable_write_ahead;
 
 	/** create the DB if it's not already present */
-	options.create_if_missing = true;
+	rocksdb_disk->options.create_if_missing = true;
 
 	/** open DB */
-	rocksdb::Status s = rocksdb::DB::Open(options, rocksdb_disk->db_path, &rocksdb_disk->db);
-	if (!s.ok()) {
-		SPDK_ERRLOG("%s\n", s.ToString().c_str());
-		free(rocksdb_disk);
-		return -EINVAL;
-	}
 
-	if (rocksdb_disk->db_backup_path) {
-		/** open Backup Engine that we will use for backing up our database */
-		rocksdb::Status s = rocksdb::BackupEngine::Open(options.env,
-				    rocksdb::BackupableDBOptions(rocksdb_disk->db_backup_path, nullptr, true, options.info_log.get()),
-				    &rocksdb_disk->be);
-		if (!s.ok()) {
-			SPDK_ERRLOG("%s\n", s.ToString().c_str());
-			free(rocksdb_disk);
-			return -EINVAL;
-		}
+	if (rocksdb_disk->bdev_name) {
+		NewSpdkRocksdbEnv(rocksdb::Env::Default(), rocksdb_disk->db_path,
+				  rocksdb_disk->bdev_name, rocksdb_disk->blobfs_cache_size, bdev_rocksdb_env_cb, rocksdb_disk);
+	} else {
+		bdev_rocksdb_env_cb(rocksdb_disk);
 	}
 
 	*bdev = &(rocksdb_disk->bdev);
