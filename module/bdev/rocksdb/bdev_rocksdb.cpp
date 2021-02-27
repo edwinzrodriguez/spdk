@@ -459,8 +459,8 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	}
 
 	long cpus = sysconf(_SC_NPROCESSORS_ONLN);  /** get # of online cores */
-	options.IncreaseParallelism(cpus);
-	options.OptimizeLevelStyleCompaction(0);
+	options.IncreaseParallelism(spdk_max(cpus / 2, 1));
+	options.OptimizeLevelStyleCompaction();
 	/** create the DB if it's not already present */
 	options.create_if_missing = true;
 	options.compression = rocksdb::kNoCompression;
