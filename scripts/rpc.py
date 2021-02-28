@@ -432,9 +432,16 @@ if __name__ == "__main__":
     p = subparsers.add_parser('bdev_rocksdb_create', aliases=['construct_rocksdb_bdev'],
                               help='Add a kv bdev with rocksdb backend')
     p.add_argument('name', help='KV device name')
-    p.add_argument('-u', '--uuid', help='UUID of the bdev')
     p.add_argument('db_path', help='Path to data directory')
-    p.add_argument('-b', '--backup-path', help='Path to backup directory')
+    p.add_argument('-u', '--uuid', help='UUID of the bdev')
+    p.add_argument('--backup-path', help='Path to backup directory')
+    p.add_argument('--wbs-mb', help='Write buffer cache size in MB', type=int, default=64)
+    p.add_argument('--compression', help='Enable compression', type=bool, default=True)
+    p.add_argument('--compaction-style', help='Compaction style level=0, universal=1, fifo=3, none=3', type=int, default=0)
+    p.add_argument('--sync-write', help='Flush write to disk before I/O is complete', type=bool, default=True)
+    p.add_argument('--disable-write-ahead', help='If true, writes will not first go to the write ahead log'
+                   ' and the write may get lost after a crash',
+                   type=bool, default=False)
     p.set_defaults(func=bdev_rocksdb_create)
 
     def bdev_rocksdb_delete(args):

@@ -47,6 +47,11 @@ struct spdk_rocksdb_bdev_opts {
 	const struct spdk_uuid *uuid;
 	const char *db_path;
 	const char *db_backup_path;
+	uint32_t wbs_mb; /** Write buffer cache in MB */
+	bool compression;
+	int compaction_style; /** level=0, universal=1, fifo=3, none=3 */
+	bool sync_write;
+	bool disable_write_ahead;
 };
 
 int bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts *opts);

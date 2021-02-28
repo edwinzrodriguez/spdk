@@ -59,6 +59,11 @@ struct rocksdb_bdev {
 	struct spdk_bdev	bdev;
 	char *db_path;
 	char *db_backup_path;
+	uint32_t wbs_mb; /** Write buffer cache in MB */
+	bool compression;
+	int compaction_style; /** level=0, universal=1, fifo=3, none=3 */
+	bool sync_write;
+	bool disable_write_ahead;
 	rocksdb::DB *db;
 	rocksdb::BackupEngine *be;
 	rocksdb::WriteOptions writeoptions;
@@ -72,7 +77,6 @@ struct rocksdb_io_channel {
 };
 
 static TAILQ_HEAD(, rocksdb_bdev) g_rocksdb_bdev_head = TAILQ_HEAD_INITIALIZER(g_rocksdb_bdev_head);
-static void *g_rocksdb_read_buf;
 
 static int bdev_rocksdb_initialize(void);
 static void bdev_rocksdb_finish(void);
@@ -380,6 +384,11 @@ bdev_rocksdb_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ct
 	if (rocksdb_disk->db_backup_path) {
 		spdk_json_write_named_string(w, "db_backup_path", rocksdb_disk->db_backup_path);
 	}
+	spdk_json_write_named_uint32(w, "wbs_mb", rocksdb_disk->wbs_mb);
+	spdk_json_write_named_bool(w, "compression", rocksdb_disk->compression);
+	spdk_json_write_named_uint32(w, "compaction_style", rocksdb_disk->compaction_style);
+	spdk_json_write_named_bool(w, "sync_write", rocksdb_disk->sync_write);
+	spdk_json_write_named_bool(w, "disable_write_ahead", rocksdb_disk->disable_write_ahead);
 	spdk_uuid_fmt_lower(uuid_str, sizeof(uuid_str), &bdev->uuid);
 	spdk_json_write_named_string(w, "uuid", uuid_str);
 	spdk_json_write_object_end(w);
@@ -436,7 +445,13 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 			return -ENOMEM;
 		}
 	}
-	rocksdb_disk->bdev.product_name = strdup("KV Null disk");
+	rocksdb_disk->compression = opts->compression;
+	rocksdb_disk->wbs_mb = opts->wbs_mb;
+	rocksdb_disk->compaction_style = opts->compaction_style;
+	rocksdb_disk->sync_write = opts->sync_write;
+	rocksdb_disk->disable_write_ahead = opts->disable_write_ahead;
+
+	rocksdb_disk->bdev.product_name = strdup("KV Rocksdb disk");
 
 	rocksdb_disk->bdev.write_cache = 0;
 	rocksdb_disk->bdev.blocklen = 1;
@@ -461,9 +476,21 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	long cpus = sysconf(_SC_NPROCESSORS_ONLN);  /** get # of online cores */
 	options.IncreaseParallelism(spdk_max(cpus / 2, 1));
 	options.OptimizeLevelStyleCompaction();
+	if (!rocksdb_disk->compression) {
+		options.compression = rocksdb::kNoCompression;
+	}
+
+	options.max_background_jobs = 2;
+	options.max_write_buffer_number = 2;
+	options.write_buffer_size = rocksdb_disk->wbs_mb << 20; /* Convert to bytes */
+	options.compaction_style = rocksdb::CompactionStyle(rocksdb_disk->compaction_style);
+	options.max_open_files = 500000;
+
+	rocksdb_disk->writeoptions.sync = rocksdb_disk->sync_write;
+	rocksdb_disk->writeoptions.disableWAL = rocksdb_disk->disable_write_ahead;
+
 	/** create the DB if it's not already present */
 	options.create_if_missing = true;
-	options.compression = rocksdb::kNoCompression;
 
 	/** open DB */
 	rocksdb::Status s = rocksdb::DB::Open(options, rocksdb_disk->db_path, &rocksdb_disk->db);
@@ -551,17 +578,6 @@ rocksdb_bdev_destroy_cb(void *io_device, void *ctx_buf)
 static int
 bdev_rocksdb_initialize(void)
 {
-	/*
-	 * This will be used if upper layer expects us to allocate the read buffer.
-	 *  Instead of using a real rbuf from the bdev pool, just always point to
-	 *  this same zeroed buffer.
-	 */
-	g_rocksdb_read_buf = spdk_zmalloc(SPDK_BDEV_LARGE_BUF_MAX_SIZE, 0, NULL,
-					  SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
-	if (g_rocksdb_read_buf == NULL) {
-		SPDK_DEBUGLOG(bdev_rocksdb, "bdev_rocksdb_initialize Failed to allocate memory buffer\n");
-		return -1;
-	}
 
 	/*
 	 * We need to pick some unique address as our "io device" - so just use the
@@ -576,7 +592,6 @@ bdev_rocksdb_initialize(void)
 static void
 _bdev_rocksdb_finish_cb(void *arg)
 {
-	spdk_free(g_rocksdb_read_buf);
 	spdk_bdev_module_finish_done();
 }
 
