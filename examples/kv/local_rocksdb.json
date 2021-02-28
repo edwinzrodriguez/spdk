@@ -73,7 +73,7 @@
           "params": {
             "name": "KV0",
             "db_path": "/tmp/rocksdb",
-            "wbs_mb": 0,
+            "wbs_mb": 64,
             "compression": false,
             "compaction_style": 0,
             "sync_write": false,
