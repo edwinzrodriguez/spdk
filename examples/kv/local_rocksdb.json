@@ -78,6 +78,10 @@
             "compaction_style": 0,
             "sync_write": false,
             "disable_write_ahead": false,
+            "background_threads_low": 0,
+            "background_threads_high": 0,
+            "cache_size_mb": 0,
+            "optimize_compaction_mb": 0,
             "uuid": "7ba2391a-6e33-4ee6-8a22-04e658f8afea"
           }
         },

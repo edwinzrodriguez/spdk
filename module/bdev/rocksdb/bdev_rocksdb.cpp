@@ -52,6 +52,8 @@ extern "C" {
 #include "rocksdb/slice.h"
 #include "rocksdb/options.h"
 #include "rocksdb/utilities/backupable_db.h"
+#include "rocksdb/table.h"
+#include "rocksdb/cache.h"
 
 #include "bdev_rocksdb.h"
 
@@ -64,12 +66,18 @@ struct rocksdb_bdev {
 	int compaction_style; /** level=0, universal=1, fifo=3, none=3 */
 	bool sync_write;
 	bool disable_write_ahead;
+	uint32_t background_threads_low;
+	uint32_t background_threads_high;
+	uint32_t cache_size_mb; /** Block cache size in MB */
+	uint32_t optimize_compaction_mb; /** memtable memory budget for compaction method */
 	rocksdb::DB *db;
 	rocksdb::BackupEngine *be;
 	rocksdb::WriteOptions writeoptions;
 	rocksdb::ReadOptions readoptions;
 	TAILQ_ENTRY(rocksdb_bdev)	tailq;
 };
+
+static rocksdb::Env *env = rocksdb::Env::Default();
 
 struct rocksdb_io_channel {
 	struct spdk_poller		*poller;
@@ -389,6 +397,10 @@ bdev_rocksdb_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ct
 	spdk_json_write_named_uint32(w, "compaction_style", rocksdb_disk->compaction_style);
 	spdk_json_write_named_bool(w, "sync_write", rocksdb_disk->sync_write);
 	spdk_json_write_named_bool(w, "disable_write_ahead", rocksdb_disk->disable_write_ahead);
+	spdk_json_write_named_uint32(w, "background_threads_low", rocksdb_disk->background_threads_low);
+	spdk_json_write_named_uint32(w, "background_threads_high", rocksdb_disk->background_threads_high);
+	spdk_json_write_named_uint32(w, "cache_size_mb", rocksdb_disk->cache_size_mb);
+	spdk_json_write_named_uint32(w, "optimize_compaction_mb", rocksdb_disk->optimize_compaction_mb);
 	spdk_uuid_fmt_lower(uuid_str, sizeof(uuid_str), &bdev->uuid);
 	spdk_json_write_named_string(w, "uuid", uuid_str);
 	spdk_json_write_object_end(w);
@@ -450,6 +462,10 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	rocksdb_disk->compaction_style = opts->compaction_style;
 	rocksdb_disk->sync_write = opts->sync_write;
 	rocksdb_disk->disable_write_ahead = opts->disable_write_ahead;
+	rocksdb_disk->background_threads_low = opts->background_threads_low;
+	rocksdb_disk->background_threads_high = opts->background_threads_high;
+	rocksdb_disk->cache_size_mb = opts->cache_size_mb;
+	rocksdb_disk->optimize_compaction_mb = opts->optimize_compaction_mb;
 
 	rocksdb_disk->bdev.product_name = strdup("KV Rocksdb disk");
 
@@ -474,8 +490,19 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	}
 
 	long cpus = sysconf(_SC_NPROCESSORS_ONLN);  /** get # of online cores */
-	options.IncreaseParallelism(spdk_max(cpus / 2, 1));
-	options.OptimizeLevelStyleCompaction();
+	if (rocksdb_disk->background_threads_low != 0) {
+		options.max_background_jobs = rocksdb_disk->background_threads_low;
+		env->SetBackgroundThreads(rocksdb_disk->background_threads_low, rocksdb::Env::LOW);
+	} else {
+		options.max_background_jobs = spdk_max(cpus / 2, 1);
+		env->SetBackgroundThreads(options.max_background_jobs, rocksdb::Env::LOW);
+	}
+	if (rocksdb_disk->background_threads_high != 0) {
+		env->SetBackgroundThreads(rocksdb_disk->background_threads_high, rocksdb::Env::HIGH);
+	} else {
+		env->SetBackgroundThreads(1, rocksdb::Env::HIGH);
+	}
+
 	if (!rocksdb_disk->compression) {
 		options.compression = rocksdb::kNoCompression;
 	}
@@ -484,7 +511,31 @@ bdev_rocksdb_create(struct spdk_bdev **bdev, const struct spdk_rocksdb_bdev_opts
 	options.max_write_buffer_number = 2;
 	options.write_buffer_size = rocksdb_disk->wbs_mb << 20; /* Convert to bytes */
 	options.compaction_style = rocksdb::CompactionStyle(rocksdb_disk->compaction_style);
+	if (rocksdb_disk->optimize_compaction_mb) {
+		if (options.compaction_style == rocksdb::kCompactionStyleLevel) {
+			options.OptimizeLevelStyleCompaction(512 * 1024  * 1024);
+		}
+		if (options.compaction_style == rocksdb::kCompactionStyleUniversal) {
+			options.OptimizeUniversalStyleCompaction(512 * 1024  * 1024);
+		}
+	}
 	options.max_open_files = 500000;
+
+	options.max_background_compactions = 4;
+	options.max_background_flushes = 2;
+	options.bytes_per_sync = 1048576;
+	options.compaction_pri = rocksdb::kMinOverlappingRatio;
+
+	rocksdb::BlockBasedTableOptions table_options;
+	table_options.block_size = 16 * 1024;
+	table_options.cache_index_and_filter_blocks = true;
+	table_options.pin_l0_filter_and_index_blocks_in_cache = true;
+	if (rocksdb_disk->cache_size_mb) {
+		table_options.block_cache = rocksdb::NewLRUCache(rocksdb_disk->cache_size_mb, 6, false, 0.0);
+
+	}
+	options.table_factory.reset(
+		rocksdb::NewBlockBasedTableFactory(table_options));
 
 	rocksdb_disk->writeoptions.sync = rocksdb_disk->sync_write;
 	rocksdb_disk->writeoptions.disableWAL = rocksdb_disk->disable_write_ahead;

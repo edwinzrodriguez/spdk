@@ -424,10 +424,19 @@ if __name__ == "__main__":
 
     def bdev_rocksdb_create(args):
         print_json(rpc.bdev.bdev_rocksdb_create(args.client,
-                                                db_path=args.db_path,
-                                                db_backup_path=args.db_path,
                                                 name=args.name,
-                                                uuid=args.uuid))
+                                                db_path=args.db_path,
+                                                uuid=args.uuid,
+                                                db_backup_path=args.db_path,
+                                                wbs_mb=args.wbs_mb,
+                                                compression=args.compression,
+                                                compaction_style=args.compaction_style,
+                                                sync_write=args.sync_write,
+                                                disable_write_ahead=args.disable_write_ahead,
+                                                background_threads_low=args.background_threads_low,
+                                                background_threads_high=args.background_threads_high,
+                                                cache_size_mb=args.cache_size_mb,
+                                                optimize_compaction_mb=args.optimize_compaction_mb))
 
     p = subparsers.add_parser('bdev_rocksdb_create', aliases=['construct_rocksdb_bdev'],
                               help='Add a kv bdev with rocksdb backend')
@@ -442,6 +451,10 @@ if __name__ == "__main__":
     p.add_argument('--disable-write-ahead', help='If true, writes will not first go to the write ahead log'
                    ' and the write may get lost after a crash',
                    type=bool, default=False)
+    p.add_argument('--background-threads-low', help='Number of background worker threads in default pool', type=int, default=0)
+    p.add_argument('--background-threads-high', help='Number of background worker threads in high pri pool', type=int, default=0)
+    p.add_argument('--cache-size-mb', help='Block cache size in MB', type=int, default=0)
+    p.add_argument('--optimize-compaction-mb', help='memtable memory budget for compaction method', type=int, default=0)
     p.set_defaults(func=bdev_rocksdb_create)
 
     def bdev_rocksdb_delete(args):
