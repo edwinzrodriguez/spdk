@@ -46,6 +46,7 @@ extern "C" {
 #endif
 
 #include "spdk/nvme_kv_spec.h"
+#include "spdk/nvme.h"
 
 /** 0x11223344-11223344-11223344-11223344 + terminating NULL */
 #define KV_KEY_STRING_LEN (38)

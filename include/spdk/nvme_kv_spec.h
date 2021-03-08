@@ -43,7 +43,7 @@
 extern "C" {
 #endif
 
-#include "spdk/nvme.h"
+#include "spdk/nvme_spec.h"
 
 #define KV_MAX_KEY_SIZE (16)
 
