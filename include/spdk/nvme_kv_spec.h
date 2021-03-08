@@ -46,7 +46,6 @@ extern "C" {
 #include "spdk/nvme.h"
 
 #define KV_MAX_KEY_SIZE (16)
-#define KV_MAX_VALUE_SIZE (1<<21)
 
 /**
  * KV command status codes
