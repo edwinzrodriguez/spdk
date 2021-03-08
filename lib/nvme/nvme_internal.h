@@ -506,6 +506,10 @@ struct spdk_nvme_ns {
 	 * Key Value Command Set Specific Identify Namespace data.
 	 */
 	struct spdk_nvme_kv_ns_data	*nsdata_kv;
+
+	uint32_t kv_key_max_len;
+	uint32_t kv_value_max_len;
+	uint32_t kv_max_num_keys;
 };
 
 /**

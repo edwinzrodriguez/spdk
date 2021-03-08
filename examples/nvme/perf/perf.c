@@ -843,16 +843,16 @@ kv_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 	if (task->is_read) {
 		rc = spdk_nvme_kv_cmd_retrieve(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
 					       &task->kv_key, task->iovs[0].iov_base, entry->io_size_blocks * entry->block_size,
-					       0, kv_io_complete, task, entry->io_flags);
+					       kv_io_complete, task, entry->io_flags);
 	} else {
 		rc = spdk_nvme_kv_cmd_store(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
 					    &task->kv_key, task->iovs[0].iov_base, entry->io_size_blocks * entry->block_size,
-					    0, kv_io_complete, task, entry->io_flags);
+					    kv_io_complete, task, entry->io_flags);
 	}
 	return rc;
 }
 
-static void
+static int64_t
 kv_check_io(struct ns_worker_ctx *ns_ctx)
 {
 	int64_t rc;
@@ -862,7 +862,9 @@ kv_check_io(struct ns_worker_ctx *ns_ctx)
 		fprintf(stderr, "NVMe io qpair process completion error\n");
 		exit(1);
 	}
+	return rc;
 }
+
 
 static void
 kv_verify_io(struct perf_task *task, struct ns_entry *entry)
