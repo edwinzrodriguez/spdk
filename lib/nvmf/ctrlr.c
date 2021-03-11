@@ -2400,7 +2400,7 @@ nvmf_ctrlr_identify_ns_id_descriptor_list(
 
 #define ADD_ID_DESC(type, data, size) \
 	do { \
-		if (!spdk_mem_all_zero(data, size)) { \
+		if (type == SPDK_NVME_NIDT_CSI || !spdk_mem_all_zero(data, size)) { \
 			_add_ns_id_desc(&buf_ptr, &buf_remain, type, data, size); \
 		} \
 	} while (0)
