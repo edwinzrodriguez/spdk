@@ -124,3 +124,28 @@ Note: in a pinch, use the following command to fix a broken repository:
   git config submodule.rocksdb.url https://bitbucket.eng.netapp.com/scm/kv-store-bb/rocksdb.git
   git submodule update --init
 ```
+
+# Running nvmf.sh test scripts
+
+Note: these tests only work on ssan-rx2560-03
+
+First configure your reposity to compile w/out rocksdb. The nvmf test scripts require --with-fio=<path> to build their fio plugin,
+but the fio plugin can't link with rocksdb because it requires C++.
+
+```
+  ./configure --enable-debug --enable-werror --with-fio=/usr/local/src/fio --with-rdma
+  time make -j $(nproc)
+```
+
+Next run the kv_identify.sh and kv_perf.sh tests.
+
+```
+  sudo test/nvmf/host/kv_identify.sh --iso --transport=tcp
+  sudo test/nvmf/host/kv_perf.sh --iso --transport=tcp
+```
+
+Run the nvmf.sh test (which should include kv_identify.sh and kv_perf.sh)
+
+```
+  sudo test/nvmf/nvmf.sh --iso --transport=tcp
+```

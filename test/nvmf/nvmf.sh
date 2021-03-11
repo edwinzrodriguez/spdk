@@ -61,6 +61,8 @@ run_test "nvmf_identify" test/nvmf/host/identify.sh "${TEST_ARGS[@]}"
 run_test "nvmf_perf" test/nvmf/host/perf.sh "${TEST_ARGS[@]}"
 run_test "nvmf_multipath" test/nvmf/host/multipath.sh "${TEST_ARGS[@]}"
 run_test "nvmf_multicontroller" test/nvmf/host/multicontroller.sh "${TEST_ARGS[@]}"
+run_test "nvmf_kv_identify" test/nvmf/host/kv_identify.sh "${TEST_ARGS[@]}"
+run_test "nvmf_kv_perf" test/nvmf/host/kv_perf.sh "${TEST_ARGS[@]}"
 
 # TODO: disabled due to intermittent failures (RDMA_CM_EVENT_UNREACHABLE/ETIMEDOUT)
 #run_test test/nvmf/host/identify_kernel_nvmf.sh $TEST_ARGS
