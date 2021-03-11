@@ -28,6 +28,8 @@ run_test "nvmf_host_multipath_status" $rootdir/test/nvmf/host/multipath_status.s
 run_test "nvmf_discovery_remove_ifc" $rootdir/test/nvmf/host/discovery_remove_ifc.sh "${TEST_ARGS[@]}"
 run_test "nvmf_identify_kernel_target" "$rootdir/test/nvmf/host/identify_kernel_nvmf.sh" "${TEST_ARGS[@]}"
 run_test "nvmf_auth_host" "$rootdir/test/nvmf/host/auth.sh" "${TEST_ARGS[@]}"
+run_test "nvmf_kv_identify" test/nvmf/host/kv_identify.sh "${TEST_ARGS[@]}"
+run_test "nvmf_kv_perf" test/nvmf/host/kv_perf.sh "${TEST_ARGS[@]}"
 
 if [[ "$SPDK_TEST_NVMF_TRANSPORT" == "tcp" ]]; then
 	run_test "nvmf_digest" "$rootdir/test/nvmf/host/digest.sh" "${TEST_ARGS[@]}"
