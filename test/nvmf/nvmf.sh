@@ -91,6 +91,8 @@ run_test "nvmf_failover" test/nvmf/host/failover.sh "${TEST_ARGS[@]}"
 run_test "nvmf_discovery" test/nvmf/host/discovery.sh "${TEST_ARGS[@]}"
 # TODO: disabled due to intermittent failures (RDMA_CM_EVENT_UNREACHABLE/ETIMEDOUT)
 #run_test test/nvmf/host/identify_kernel_nvmf.sh $TEST_ARGS
+run_test "nvmf_kv_identify" test/nvmf/host/kv_identify.sh "${TEST_ARGS[@]}"
+run_test "nvmf_kv_perf" test/nvmf/host/kv_perf.sh "${TEST_ARGS[@]}"
 
 if [[ $SPDK_TEST_NVMF_MDNS -eq 1 && "$SPDK_TEST_NVMF_TRANSPORT" == "tcp" ]]; then
 	# Skipping tests on RDMA because the rdma stack fails to configure the same IP for host and target.
