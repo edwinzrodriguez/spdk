@@ -183,6 +183,7 @@
 	spdk_nvme_qpair_get_num_outstanding_reqs;
 
 	spdk_nvme_print_command;
+	spdk_nvme_print_command_csi;
 	spdk_nvme_print_completion;
 
 	spdk_nvme_cpl_get_status_string;
@@ -249,6 +250,22 @@
 	spdk_opal_cmd_secure_erase_locking_range;
 	spdk_opal_get_locking_range_info;
 	spdk_opal_free_locking_range_info;
+
+	# public functions from nvme_kv.h
+	spdk_nvme_kv_cmd_set_key;
+	spdk_nvme_kv_cmd_get_key;
+	spdk_nvme_kv_ns_get_data;
+	spdk_nvme_kv_cmd_store;
+	spdk_nvme_kv_cmd_retrieve;
+	spdk_nvme_kv_cmd_delete;
+	spdk_nvme_kv_cmd_exist;
+	spdk_nvme_kv_cmd_list;
+	spdk_kv_key_fmt_lower;
+	spdk_kv_key_parse;
+	spdk_kv_cmd_fmt_lower;
+	spdk_nvme_kv_get_max_key_len;
+	spdk_nvme_kv_get_max_value_len;
+	spdk_nvme_kv_get_max_num_keys;
 
 	local: *;
 };
