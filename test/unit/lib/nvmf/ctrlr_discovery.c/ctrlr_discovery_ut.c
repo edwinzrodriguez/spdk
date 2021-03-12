@@ -89,6 +89,17 @@ DEFINE_STUB(spdk_bdev_module_claim_bdev, int,
 	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
 	     struct spdk_bdev_module *module), 0);
 
+DEFINE_STUB(spdk_bdev_io_type_supported, bool,
+	    (struct spdk_bdev *bdev, enum spdk_bdev_io_type io_type), false);
+
+DEFINE_STUB(nvmf_ctrlr_process_nvm_io_cmd, int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+	     struct spdk_nvmf_request *req), 0);
+
+DEFINE_STUB(nvmf_ctrlr_process_kv_io_cmd, int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+	     struct spdk_nvmf_request *req), 0);
+
 DEFINE_STUB_V(nvmf_ctrlr_reservation_notice_log,
 	      (struct spdk_nvmf_ctrlr *ctrlr, struct spdk_nvmf_ns *ns,
 	       enum spdk_nvme_reservation_notification_log_page_type type));

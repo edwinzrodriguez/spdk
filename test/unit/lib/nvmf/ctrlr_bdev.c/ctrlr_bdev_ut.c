@@ -206,6 +206,28 @@ DEFINE_STUB(spdk_bdev_nvme_io_passthru, int,
 	     spdk_bdev_io_completion_cb cb, void *cb_arg),
 	    0);
 
+DEFINE_STUB_V(spdk_nvme_kv_cmd_get_key, (const struct spdk_nvme_kv_cmd *cmd,
+		struct spdk_nvme_kv_key_t *key));
+
+DEFINE_STUB(spdk_bdev_kv_retrieve, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+		uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+		spdk_bdev_io_completion_cb cb, void *cb_arg), 0);
+
+DEFINE_STUB(spdk_bdev_kv_store, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+				      uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+				      spdk_bdev_io_completion_cb cb, void *cb_arg), 0);
+
+DEFINE_STUB(spdk_bdev_kv_list, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+				     uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+				     spdk_bdev_io_completion_cb cb, void *cb_arg, spdk_bdev_io_kv_list_cb list_cb, void *list_cb_arg),
+	    0);
+
+DEFINE_STUB(spdk_bdev_kv_exist, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+				      uint32_t key_len, uint8_t *key, spdk_bdev_io_completion_cb cb, void *cb_arg), 0);
+
+DEFINE_STUB(spdk_bdev_kv_delete, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+				       uint32_t key_len, uint8_t *key, spdk_bdev_io_completion_cb cb, void *cb_arg), 0);
+
 DEFINE_STUB_V(spdk_bdev_free_io, (struct spdk_bdev_io *bdev_io));
 
 DEFINE_STUB(spdk_nvmf_subsystem_get_nqn, const char *,
