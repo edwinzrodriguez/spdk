@@ -117,6 +117,18 @@ Note, for now, we only use the the parameters from the first KV format specifier
 
 ### bdev
 
+Add bdev KV operation for store, retrieve, exist, delete and list
+
+       spdk_bdev_kv_retrieve
+       spdk_bdev_kv_store
+       spdk_bdev_kv_list
+       spdk_bdev_kv_exist
+       spdk_bdev_kv_delete
+
+Added kv fields to spdk_bdev_io - key_len, key, buffer,  and buffer_len
+
+### bdev
+
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.
 Only one OCSSD bdev can be created for one OCSSD namespace.
 
