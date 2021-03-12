@@ -3546,6 +3546,84 @@ Example response:
 }
 ~~~
 
+### bdev_kv_null_create {#rpc_bdev_kv_null_create}
+
+Construct @ref bdev_config_kv_null
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Optional | string      | Bdev name to use
+uuid                    | Optional | string      | UUID of new bdev
+capacity                | Optional | number      | Size of null bdev in MB. Default=0.
+
+#### Result
+
+Name of newly created bdev.
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "name": "Null0",
+    "uuid": "2b6601ba-eada-44fb-9a83-a20eb9eb9e90",
+    "md_size": 8,
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_kv_null_create",
+  "id": 1
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": "Null0"
+}
+~~~
+
+### bdev_kv_null_delete {#rpc_bdev_kv_null_delete}
+
+Delete @ref bdev_config_kv_null.
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "name": "Null0"
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_kv_null_delete",
+  "id": 1
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
 ### bdev_aio_create {#rpc_bdev_aio_create}
 
 Construct @ref bdev_config_aio.
