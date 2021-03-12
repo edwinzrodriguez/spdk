@@ -12,6 +12,7 @@
 
 #include "spdk/bdev.h"
 #include "spdk/nvme_spec.h"
+#include "spdk/nvme_kv.h"
 #include "spdk/nvmf.h"
 #include "spdk/nvmf_cmd.h"
 #include "spdk/nvmf_spec.h"
@@ -32,6 +33,7 @@
  */
 #define NVMF_DATA_BUFFER_ALIGNMENT	VALUE_4KB
 #define NVMF_DATA_BUFFER_MASK		(NVMF_DATA_BUFFER_ALIGNMENT - 1LL)
+#define KV_MAX_VALUE_SIZE (1<<21)
 
 #define SPDK_NVMF_DEFAULT_ACCEPT_POLL_RATE_US 10000
 
@@ -41,6 +43,7 @@ union nvmf_h2c_msg {
 	struct spdk_nvmf_fabric_prop_set_cmd		prop_set_cmd;
 	struct spdk_nvmf_fabric_prop_get_cmd		prop_get_cmd;
 	struct spdk_nvmf_fabric_connect_cmd		connect_cmd;
+	struct spdk_nvme_kv_cmd				nvme_kv_cmd;
 };
 SPDK_STATIC_ASSERT(sizeof(union nvmf_h2c_msg) == 64, "Incorrect size");
 
@@ -498,8 +501,9 @@ struct spdk_nvmf_ctrlr_feat {
 	union spdk_nvme_feat_write_atomicity write_atomicity;
 	union spdk_nvme_feat_async_event_configuration async_event_configuration;
 	union spdk_nvme_feat_keep_alive_timer keep_alive_timer;
+	union spdk_nvme_feat_key_value_config key_value;
 };
-SPDK_STATIC_ASSERT(sizeof(struct spdk_nvmf_ctrlr_feat) == 40, "Incorrect size");
+SPDK_STATIC_ASSERT(sizeof(struct spdk_nvmf_ctrlr_feat) == 44, "Incorrect size");
 
 /*
  * Migration data structure used to save & restore a NVMe-oF controller.
@@ -517,13 +521,12 @@ struct spdk_nvmf_ctrlr_migr_data {
 	uint32_t regs_size;
 	/* `feat_size` is valid size of `spdk_nvmf_ctrlr_feat`. */
 	uint32_t feat_size;
-	uint32_t reserved;
 
 	struct spdk_nvmf_registers regs;
 	uint8_t regs_reserved[216];
 
 	struct spdk_nvmf_ctrlr_feat feat;
-	uint8_t feat_reserved[216];
+	uint8_t feat_reserved[212];
 
 	uint16_t cntlid;
 	uint8_t acre;

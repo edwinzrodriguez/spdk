@@ -151,6 +151,9 @@ struct spdk_nvmf_registrant {
 	uint64_t rkey;
 };
 
+typedef int (*spdk_nvmf_process_io_cmd)(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+					struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+
 struct spdk_nvmf_ns {
 	uint32_t nsid;
 	uint32_t anagrpid;
@@ -176,8 +179,12 @@ struct spdk_nvmf_ns {
 	bool ptpl_activated;
 	/* ZCOPY supported on bdev device */
 	bool zcopy;
+	/* KV operations supported on bdev device */
+	bool kv;
 	/* Command Set Identifier */
 	enum spdk_nvme_csi csi;
+	/* Command Set IO handler */
+	spdk_nvmf_process_io_cmd process_io_cmd;
 };
 
 /*
@@ -338,6 +345,10 @@ void nvmf_get_discovery_log_page(struct spdk_nvmf_tgt *tgt, const char *hostnqn,
 void nvmf_ctrlr_destruct(struct spdk_nvmf_ctrlr *ctrlr);
 int nvmf_ctrlr_process_admin_cmd(struct spdk_nvmf_request *req);
 int nvmf_ctrlr_process_io_cmd(struct spdk_nvmf_request *req);
+int nvmf_ctrlr_process_nvm_io_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+				  struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+int nvmf_ctrlr_process_kv_io_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+				 struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
 bool nvmf_ctrlr_dsm_supported(struct spdk_nvmf_ctrlr *ctrlr);
 bool nvmf_ctrlr_write_zeroes_supported(struct spdk_nvmf_ctrlr *ctrlr);
 bool nvmf_ctrlr_copy_supported(struct spdk_nvmf_ctrlr *ctrlr);
@@ -346,6 +357,7 @@ bool nvmf_ctrlr_use_zcopy(struct spdk_nvmf_request *req);
 
 void nvmf_bdev_ctrlr_identify_ns(struct spdk_nvmf_ns *ns, struct spdk_nvme_ns_data *nsdata,
 				 bool dif_insert_or_strip);
+void nvmf_bdev_ctrlr_identify_ns_kv(struct spdk_nvmf_ns *ns, struct spdk_nvme_kv_ns_data *nsdata);
 int nvmf_bdev_ctrlr_read_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
 			     struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
 int nvmf_bdev_ctrlr_write_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
@@ -367,6 +379,17 @@ int nvmf_bdev_ctrlr_nvme_passthru_io(struct spdk_bdev *bdev, struct spdk_bdev_de
 bool nvmf_bdev_ctrlr_get_dif_ctx(struct spdk_bdev *bdev, struct spdk_nvme_cmd *cmd,
 				 struct spdk_dif_ctx *dif_ctx);
 bool nvmf_bdev_zcopy_enabled(struct spdk_bdev *bdev);
+
+int nvmf_bdev_ctrlr_retrieve_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+				 struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+int nvmf_bdev_ctrlr_store_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+			      struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+int nvmf_bdev_ctrlr_exist_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+			      struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+int nvmf_bdev_ctrlr_delete_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+			       struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
+int nvmf_bdev_ctrlr_list_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+			     struct spdk_io_channel *ch, struct spdk_nvmf_request *req);
 
 int nvmf_subsystem_add_ctrlr(struct spdk_nvmf_subsystem *subsystem,
 			     struct spdk_nvmf_ctrlr *ctrlr);

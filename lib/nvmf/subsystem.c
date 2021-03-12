@@ -1685,6 +1685,7 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 
 	/* Cache the zcopy capability of the bdev device */
 	ns->zcopy = spdk_bdev_io_type_supported(ns->bdev, SPDK_BDEV_IO_TYPE_ZCOPY);
+	ns->kv = spdk_bdev_io_type_supported(ns->bdev, SPDK_BDEV_IO_TYPE_KV_STORE);
 
 	if (spdk_mem_all_zero(&opts.uuid, sizeof(opts.uuid))) {
 		opts.uuid = *spdk_bdev_get_uuid(ns->bdev);
@@ -1714,6 +1715,14 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 
 		subsystem->zone_append_supported = zone_append_supported;
 		subsystem->max_zone_append_size_kib = max_zone_append_size_kib;
+	}
+
+	if (spdk_bdev_is_kv(ns->bdev)) {
+		SPDK_DEBUGLOG(nvmf, "The added namespace is backed by a KV device.\n");
+		ns->csi = SPDK_NVME_CSI_KV;
+		ns->process_io_cmd = nvmf_ctrlr_process_kv_io_cmd;
+	} else {
+		ns->process_io_cmd = nvmf_ctrlr_process_nvm_io_cmd;
 	}
 
 	ns->opts = opts;

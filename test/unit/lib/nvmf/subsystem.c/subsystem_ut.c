@@ -76,8 +76,19 @@ DEFINE_STUB(spdk_nvme_transport_id_trtype_str,
 DEFINE_STUB(spdk_bdev_is_zoned, bool,
 	    (const struct spdk_bdev *bdev), false);
 
+DEFINE_STUB(spdk_bdev_is_kv, bool,
+	    (const struct spdk_bdev *bdev), false);
+
 DEFINE_STUB(spdk_bdev_get_max_zone_append_size, uint32_t,
 	    (const struct spdk_bdev *bdev), 0);
+
+DEFINE_STUB(nvmf_ctrlr_process_nvm_io_cmd, int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+	     struct spdk_nvmf_request *req), 0);
+
+DEFINE_STUB(nvmf_ctrlr_process_kv_io_cmd, int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+	     struct spdk_nvmf_request *req), 0);
 
 int
 spdk_nvmf_transport_listen(struct spdk_nvmf_transport *transport,
