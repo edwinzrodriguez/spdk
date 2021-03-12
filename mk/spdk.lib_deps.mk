@@ -143,6 +143,7 @@ DEPDIRS-bdev_iscsi := $(BDEV_DEPS_THREAD)
 DEPDIRS-bdev_malloc := $(BDEV_DEPS_THREAD) accel
 DEPDIRS-bdev_null := $(BDEV_DEPS_THREAD)
 DEPDIRS-bdev_nvme = $(BDEV_DEPS_THREAD) accel nvme trace
+DEPDIRS-bdev_kv_null := $(BDEV_DEPS_THREAD) nvme
 DEPDIRS-bdev_ocf := $(BDEV_DEPS_THREAD)
 DEPDIRS-bdev_passthru := $(BDEV_DEPS_THREAD)
 DEPDIRS-bdev_raid := $(BDEV_DEPS_THREAD)
