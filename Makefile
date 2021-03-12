@@ -46,6 +46,7 @@ DIRS-y += test
 DIRS-$(CONFIG_IPSEC_MB) += ipsecbuild
 DIRS-$(CONFIG_ISAL) += isalbuild
 DIRS-$(CONFIG_VFIO_USER) += vfiouserbuild
+DIRS-$(CONFIG_ROCKSDB) += rocksdbbuild
 
 .PHONY: all clean $(DIRS-y) include/spdk/config.h mk/config.mk \
 	cc_version cxx_version .libs_only_other .ldflags ldflags install \
@@ -91,6 +92,11 @@ VFIOUSERBUILD = vfiouserbuild
 LIB += vfiouserbuild
 endif
 
+ifeq ($(CONFIG_ROCKSDB),y)
+ROCKSDBBUILD = rocksdbbuild
+LIB += rocksdbbuild
+endif
+
 all: mk/cc.mk $(DIRS-y)
 clean: $(DIRS-y)
 	$(Q)rm -f include/spdk/config.h
@@ -112,7 +118,7 @@ dpdkdeps $(DPDK_DEPS): $(WPDK)
 dpdkbuild: $(WPDK) $(DPDK_DEPS)
 endif
 
-lib: $(WPDK) $(DPDKBUILD) $(VFIOUSERBUILD)
+lib: $(WPDK) $(DPDKBUILD) $(VFIOUSERBUILD) $(ROCKSDBBUILD)
 module: lib
 shared_lib: module
 app: $(LIB)

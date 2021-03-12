@@ -31,33 +31,46 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-DIRS-y += delay error gpt lvol malloc null nvme passthru raid split zone_block kv_null
+.PHONY: all clean install uninstall
 
-DIRS-$(CONFIG_CRYPTO) += crypto
+#ifneq ($(Q),)
+#REDIRECT=> /dev/null
+#endif
 
-DIRS-$(CONFIG_OCF) += ocf
+# Force-disable scan-build
+SUB_CC = $(patsubst %ccc-analyzer,$(DEFAULT_CC),$(CC))
 
-DIRS-$(CONFIG_REDUCE) += compress
-
-DIRS-$(CONFIG_URING) += uring
-
-ifeq ($(OS),Linux)
-DIRS-y += aio ftl
-DIRS-$(CONFIG_ISCSI_INITIATOR) += iscsi
-DIRS-$(CONFIG_VIRTIO) += virtio
-DIRS-$(CONFIG_PMDK) += pmem
+ifeq ($(CONFIG_DEBUG),y)
+ROCKSDB_DEBUGLEVEL = 0
+else
+ROCKSDB_DEBUGLEVEL = 0
+endif
+ifeq ($(CONFIG_SHARED),y)
+ROCKSDB_LIBRARY_TARGET := shared_lib
+ENV_LINKER_ARGS += -Wl,-rpath-link $(ROCKSDB_USER_DIR)
+else
+ROCKSDB_LIBRARY_TARGET := static_lib
+endif
+ifeq ($(CONFIG_URING),y)
+ROCKSDB_ENV_USE_URING := "ROCKSDB_USE_IO_URING=1"
+else
+ROCKSDB_USE_URING += 0
+endif
+# Need this to link with the fio shared library
+ifeq ($(CONFIG_FIO_PLUGIN),y)
+ROCKSDB_CXXFLAGS = -fPIC
 endif
 
-DIRS-$(CONFIG_RBD) += rbd
+all:
+	$(Q)env $(ROCKSDB_ENV_USE_URING) $(MAKE) -C $(ROCKSDB_USER_DIR) $(ROCKSDB_LIBRARY_TARGET) sst_dump USE_RTTI=1 EXTRA_CXXFLAGS="$(ROCKSDB_CXXFLAGS)" DEBUG_LEVEL=$(ROCKSDB_DEBUGLEVEL) CC=$(SUB_CC) $(REDIRECT)
 
-DIRS-$(CONFIG_ROCKSDB) += rocksdb
+install: all
 
-.PHONY: all clean $(DIRS-y)
+uninstall:
+	@:
 
-all: $(DIRS-y)
-clean: $(DIRS-y)
-
-include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
+clean:
+	$(Q)$(MAKE) -C $(ROCKSDB_USER_DIR) SPDK_DIR=$(SPDK_ROOT_DIR) clean $(REDIRECT)
