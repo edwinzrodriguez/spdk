@@ -49,6 +49,9 @@ Added `nvmf_ctrlr_process_nvm_io_cmd` for handling NVM commands and `nvmf_ctrlr_
 for handling KV commands, and handlers for KV operations - store, retrieve, exist, delete, and list.
 Added `nvmf_bdev_ctrlr_identify_ns_kv` to return KV identify data.
 
+### KV
+Implement KV null bdev, with rpc calls `bdev_kv_null_create` and `bdev_kv_null_delete` to manage them.
+
 ### bdev
 
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.
