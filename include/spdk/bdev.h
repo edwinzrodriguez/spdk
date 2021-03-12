@@ -120,6 +120,11 @@ enum spdk_bdev_io_type {
 	SPDK_BDEV_IO_TYPE_SEEK_HOLE,
 	SPDK_BDEV_IO_TYPE_SEEK_DATA,
 	SPDK_BDEV_IO_TYPE_COPY,
+	SPDK_BDEV_IO_TYPE_KV_STORE,
+	SPDK_BDEV_IO_TYPE_KV_RETRIEVE,
+	SPDK_BDEV_IO_TYPE_KV_DELETE,
+	SPDK_BDEV_IO_TYPE_KV_EXIST,
+	SPDK_BDEV_IO_TYPE_KV_LIST,
 	SPDK_BDEV_NUM_IO_TYPES /* Keep last */
 };
 
@@ -2057,6 +2062,137 @@ void spdk_bdev_for_each_channel_continue(struct spdk_bdev_channel_iter *i, int s
  */
 void spdk_bdev_for_each_channel(struct spdk_bdev *bdev, spdk_bdev_for_each_channel_msg fn,
 				void *ctx, spdk_bdev_for_each_channel_done cpl);
+
+/**
+ * Submit a KV retrieve request to the kv bdev on the given channel.
+ *
+ * \ingroup bdev_io_submit_functions
+ *
+ * \param desc Block device descriptor.
+ * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
+ * \param key_len Length of key data.
+ * \param key Key to retrieve data for.
+ * \param buf Data buffer to read into.
+ * \param buffer_len The number of bytes to retrieve.
+ * \param cb Called when the request is complete.
+ * \param cb_arg Argument passed to cb.
+ *
+ * \return 0 on success. On success, the callback will always
+ * be called (even if the request ultimately failed). Return
+ * negated errno on failure, in which case the callback will not be called.
+ *   * -EINVAL - buf or buffer_lens are not aligned or out of range
+ *   * -ENOMEM - spdk_bdev_io buffer cannot be allocated
+ */
+int spdk_bdev_kv_retrieve(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+			  uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+			  spdk_bdev_io_completion_cb cb, void *cb_arg);
+
+/**
+ * Submit a store request to the kv bdev on the given channel.
+ *
+ * \ingroup bdev_io_submit_functions
+ *
+ * \param desc Block device descriptor.
+ * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
+ * \param key_len Length of key data.
+ * \param key Key to retrieve data for.
+ * \param buf Data buffer to read into.
+ * \param buffer_len The number of bytes to retrieve.
+ * \param cb Called when the request is complete.
+ * \param cb_arg Argument passed to cb.
+ *
+ * \return 0 on success. On success, the callback will always
+ * be called (even if the request ultimately failed). Return
+ * negated errno on failure, in which case the callback will not be called.
+ *   * -EINVAL - offset and/or nbytes are not aligned or out of range
+ *   * -ENOMEM - spdk_bdev_io buffer cannot be allocated
+ */
+int spdk_bdev_kv_store(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+		       uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+		       spdk_bdev_io_completion_cb cb, void *cb_arg);
+
+/**
+ * Callback to process keys.  This function is called once per key returned by spdk_bdev_kv_list
+ *
+ * \param ch The I/O channel the bdev I/O was handled on.
+ * \param bdev_io The bdev I/O
+ * \param key_len Length of key data.
+ * \param key The key data
+ * \param buffer Output buffer
+ * \param buffer_len Length of output buffer
+ * \param list_cb_arg Pointer to scratch value used by callback function
+ * \return 0 to finish iteration.
+ * \return 1 to retrieve next key.
+ */
+typedef int (*spdk_bdev_io_kv_list_cb)(struct spdk_io_channel *ch,
+				       struct spdk_bdev_io *bdev_io, uint32_t key_len, const uint8_t *key, void *buffer,
+				       uint32_t buffer_len, void **list_cb_arg);
+
+/**
+ * Submit a list keys request to the kv bdev on the given channel.
+ *
+ * \ingroup bdev_io_submit_functions
+ *
+ * \param desc Block device descriptor.
+ * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
+ * \param key_len Length of key data.
+ * \param key Key to retrieve data for.
+ * \param buf Data buffer to read into.
+ * \param buffer_len The number of bytes to retrieve.
+ * \param cb Called when the request is complete.
+ * \param cb_arg Argument passed to cb.
+ *
+ * \return 0 on success. On success, the callback will always
+ * be called (even if the request ultimately failed). Return
+ * negated errno on failure, in which case the callback will not be called.
+ *   * -EINVAL - offset and/or nbytes are not aligned or out of range
+ *   * -ENOMEM - spdk_bdev_io buffer cannot be allocated
+ */
+int spdk_bdev_kv_list(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+		      uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
+		      spdk_bdev_io_completion_cb cb, void *cb_arg, spdk_bdev_io_kv_list_cb list_cb, void *list_cb_arg);
+
+/**
+ * Submit a request to test key existence to the kv bdev on the given channel.
+ *
+ * \ingroup bdev_io_submit_functions
+ *
+ * \param desc Block device descriptor.
+ * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
+ * \param key_len Length of key data.
+ * \param key Key to retrieve data for.
+ * \param cb Called when the request is complete.
+ * \param cb_arg Argument passed to cb.
+ *
+ * \return 0 on success. On success, the callback will always
+ * be called (even if the request ultimately failed). Return
+ * negated errno on failure, in which case the callback will not be called.
+ *   * -EINVAL - offset and/or nbytes are not aligned or out of range
+ *   * -ENOMEM - spdk_bdev_io buffer cannot be allocated
+ */
+int spdk_bdev_kv_exist(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+		       uint32_t key_len, uint8_t *key, spdk_bdev_io_completion_cb cb, void *cb_arg);
+
+/**
+ * Submit a delete key request to the kv bdev on the given channel.
+ *
+ * \ingroup bdev_io_submit_functions
+ *
+ * \param desc Block device descriptor.
+ * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
+ * \param key_len Length of key data.
+ * \param key Key to retrieve data for.
+ * \param cb Called when the request is complete.
+ * \param cb_arg Argument passed to cb.
+ *
+ * \return 0 on success. On success, the callback will always
+ * be called (even if the request ultimately failed). Return
+ * negated errno on failure, in which case the callback will not be called.
+ *   * -EINVAL - offset and/or nbytes are not aligned or out of range
+ *   * -ENOMEM - spdk_bdev_io buffer cannot be allocated
+ */
+int spdk_bdev_kv_delete(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
+			uint32_t key_len, uint8_t *key, spdk_bdev_io_completion_cb cb, void *cb_arg);
 
 #ifdef __cplusplus
 }

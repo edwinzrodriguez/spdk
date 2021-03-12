@@ -108,6 +108,11 @@
 	spdk_bdev_for_each_channel_continue;
 	spdk_bdev_get_max_copy;
 	spdk_bdev_copy_blocks;
+	spdk_bdev_kv_retrieve;
+	spdk_bdev_kv_store;
+	spdk_bdev_kv_list;
+	spdk_bdev_kv_exist;
+	spdk_bdev_kv_delete;
 
 	# Public functions in bdev_module.h
 	spdk_bdev_register;
