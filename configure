@@ -101,6 +101,8 @@ function usage() {
 	echo "                           The argument must be a directory containing lib and include."
 	echo " usdt                      Build with userspace DTrace probes enabled."
 	echo "                           No path required."
+	echo " rocksdb                   Build with rocksdb kv bdev"
+	echo "                           No path required."
 	echo ""
 	echo "Environment variables:"
 	echo ""
@@ -461,11 +463,19 @@ for i in "$@"; do
 		--without-idxd)
 			CONFIG[IDXD]=n
 			;;
+<<<<<<< HEAD
 		--with-usdt)
 			CONFIG[USDT]=y
 			;;
 		--without-usdt)
 			CONFIG[USDT]=n
+=======
+		--with-rocksdb)
+			CONFIG[ROCKSDB]=y
+			;;
+		--without-rocksdb)
+			CONFIG[ROCKSDB]=n
+>>>>>>> 125b70da5 (kv:Add rocksdb bdev)
 			;;
 		--)
 			break

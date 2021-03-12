@@ -36,6 +36,8 @@ if [[ $INSTALL_DEV_TOOLS == "true" ]]; then
 	apt-get install -y pycodestyle || true
 	# Additional dependecies for nvmf performance test script
 	apt-get install -y python3-paramiko
+	# ROCKSDB requires this
+	apt-get install libsnappy-dev
 fi
 if [[ $INSTALL_PMEM == "true" ]]; then
 	# Additional dependencies for building pmem based backends

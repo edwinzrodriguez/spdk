@@ -115,6 +115,8 @@ if [[ $INSTALL_DEV_TOOLS == "true" ]]; then
 		yum install -y python-pycodestyle lcov ShellCheck
 	fi
 	yum install -y git astyle sg3_utils pciutils libabigail bash-completion
+	# ROCKSDB requires this
+	yum install -y snappy-devel
 fi
 if [[ $INSTALL_PMEM == "true" ]]; then
 	# Additional dependencies for building pmem based backends

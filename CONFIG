@@ -178,3 +178,6 @@ CONFIG_IDXD=n
 
 # Build with USDT support
 CONFIG_USDT=n
+
+# Build with RocksDB support
+CONFIG_ROCKSDB=n
