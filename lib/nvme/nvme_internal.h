@@ -25,6 +25,7 @@
 #include "spdk/util.h"
 #include "spdk/memory.h"
 #include "spdk/nvme_intel.h"
+#include "spdk/nvme_kv.h"
 #include "spdk/nvmf_spec.h"
 #include "spdk/tree.h"
 #include "spdk/uuid.h"
@@ -585,6 +586,15 @@ struct spdk_nvme_ns {
 	struct spdk_nvme_nvm_ns_data	*nsdata_nvm;
 
 	RB_ENTRY(spdk_nvme_ns)		node;
+
+	/**
+	 * Key Value Command Set Specific Identify Namespace data.
+	 */
+	struct spdk_nvme_kv_ns_data	*nsdata_kv;
+
+	uint32_t kv_key_max_len;
+	uint32_t kv_value_max_len;
+	uint32_t kv_max_num_keys;
 };
 
 /**
@@ -1314,6 +1324,7 @@ void	nvme_ns_set_identify_data(struct spdk_nvme_ns *ns);
 void	nvme_ns_set_id_desc_list_data(struct spdk_nvme_ns *ns);
 void	nvme_ns_free_zns_specific_data(struct spdk_nvme_ns *ns);
 void	nvme_ns_free_nvm_specific_data(struct spdk_nvme_ns *ns);
+void	nvme_ns_free_kv_specific_data(struct spdk_nvme_ns *ns);
 void	nvme_ns_free_iocs_specific_data(struct spdk_nvme_ns *ns);
 bool	nvme_ns_has_supported_iocs_specific_data(struct spdk_nvme_ns *ns);
 int	nvme_ns_construct(struct spdk_nvme_ns *ns, uint32_t id,

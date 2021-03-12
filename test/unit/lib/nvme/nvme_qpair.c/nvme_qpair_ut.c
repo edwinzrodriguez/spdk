@@ -30,6 +30,10 @@ DEFINE_STUB(spdk_nvme_ctrlr_free_io_qpair, int, (struct spdk_nvme_qpair *qpair),
 DEFINE_STUB_V(nvme_transport_ctrlr_disconnect_qpair, (struct spdk_nvme_ctrlr *ctrlr,
 		struct spdk_nvme_qpair *qpair));
 DEFINE_STUB_V(nvme_ctrlr_disconnect_qpair, (struct spdk_nvme_qpair *qpair));
+DEFINE_STUB(spdk_kv_key_fmt_lower, int, (char *uuid_str, size_t uuid_str_size, uint32_t key_len,
+		const uint8_t *key), 0);
+DEFINE_STUB(spdk_kv_cmd_fmt_lower, int, (const struct spdk_nvme_kv_cmd *kv_cmd, char *uuid_str,
+		size_t uuid_str_size), 0);
 
 DEFINE_STUB_V(nvme_ctrlr_abort_queued_aborts, (struct spdk_nvme_ctrlr *ctrlr));
 DEFINE_STUB(nvme_ctrlr_reinitialize_io_qpair, int,
@@ -81,6 +85,42 @@ static void
 expected_failure_callback(void *arg, const struct spdk_nvme_cpl *cpl)
 {
 	CU_ASSERT(spdk_nvme_cpl_is_error(cpl));
+}
+
+static int
+nvme_ns_cmp(struct spdk_nvme_ns *ns1, struct spdk_nvme_ns *ns2)
+{
+	return ns1->id - ns2->id;
+}
+
+RB_GENERATE_STATIC(nvme_ns_tree, spdk_nvme_ns, node, nvme_ns_cmp);
+
+uint32_t
+spdk_nvme_ctrlr_get_first_active_ns(struct spdk_nvme_ctrlr *ctrlr)
+{
+	return 1;
+}
+
+static struct spdk_nvme_ns g_inactive_ns = {};
+
+struct spdk_nvme_ns *
+spdk_nvme_ctrlr_get_ns(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid)
+{
+	struct spdk_nvme_ns tmp;
+	struct spdk_nvme_ns *ns;
+
+	if (nsid < 1 || nsid > ctrlr->cdata.nn) {
+		return NULL;
+	}
+
+	tmp.id = nsid;
+	ns = RB_FIND(nvme_ns_tree, &ctrlr->ns, &tmp);
+
+	if (ns == NULL) {
+		return &g_inactive_ns;
+	}
+
+	return ns;
 }
 
 static void

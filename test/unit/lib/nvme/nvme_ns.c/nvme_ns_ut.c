@@ -92,6 +92,12 @@ spdk_nvme_qpair_process_completions(struct spdk_nvme_qpair *qpair, uint32_t max_
 	return -1;
 }
 
+const struct spdk_nvme_kv_ns_data *
+spdk_nvme_kv_ns_get_data(struct spdk_nvme_ns *ns)
+{
+	return ns->nsdata_kv;
+}
+
 static void
 test_nvme_ns_construct(void)
 {
@@ -433,7 +439,7 @@ test_nvme_ns_has_supported_iocs_specific_data(void)
 	CU_ASSERT(nvme_ns_has_supported_iocs_specific_data(&ns) == true);
 	/* case 4: default ns.csi == SPDK_NVME_CSI_KV. Expect: false */
 	ns.csi = SPDK_NVME_CSI_KV;
-	CU_ASSERT(nvme_ns_has_supported_iocs_specific_data(&ns) == false);
+	CU_ASSERT(nvme_ns_has_supported_iocs_specific_data(&ns) == true);
 }
 
 static void
