@@ -127,6 +127,17 @@ Add bdev KV operation for store, retrieve, exist, delete and list
 
 Added kv fields to spdk_bdev_io - key_len, key, buffer,  and buffer_len
 
+### nvmf
+
+Added support to implement command sets, getting and setting controller apabilities per
+TP 4056 "Namespace Types".  Return I/O Command Set identifiers in response to IOCS identify
+ops.  Also return CSI NIDT for all namespaces.  Added csi identifier to `struct spdk_nvmf_ns`.
+Added `process_io_cmd` function pointer to namespaces for processing I/O command based on the namespace's
+command set identifier set when addidng a namespace to a subsystem, called from `nvmf_ctrlr_process_io_cmd`.
+Added `nvmf_ctrlr_process_nvm_io_cmd` for handling NVM commands and `nvmf_ctrlr_process_kv_io_cmd`
+for handling KV commands, and handlers for KV operations - store, retrieve, exist, delete, and list.
+Added `nvmf_bdev_ctrlr_identify_ns_kv` to return KV identify data.
+
 ### bdev
 
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.
