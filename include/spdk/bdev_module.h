@@ -602,6 +602,9 @@ struct spdk_bdev {
 	 */
 	uint32_t optimal_open_zones;
 
+	/** Max value size */
+	uint32_t max_value;
+
 	/**
 	 * Specifies whether bdev supports media management events.
 	 */
@@ -922,6 +925,33 @@ struct spdk_bdev_io_zone_mgmt_params {
 	void *buf;
 };
 
+struct spdk_bdev_io_kv_params {
+
+	/* Length of key buffer */
+	uint32_t key_len;
+
+	/* Key value */
+	uint8_t *key;
+
+	/* Data buffer */
+	void *buffer;
+
+	/* Data buffer size in bytes */
+	uint32_t buffer_len;
+
+	struct {
+		/** The callback argument for the outstanding request which this abort
+		 *  attempts to cancel.
+		 */
+		void *bio_cb_arg;
+	} abort;
+
+	struct {
+		spdk_bdev_io_kv_list_cb list_cb;
+		void *list_cb_arg;
+	} list;
+};
+
 /**
  *  Fields that are used internally by the bdev subsystem.  Bdev modules
  *  must not read or write to these fields.
@@ -1100,6 +1130,7 @@ struct spdk_bdev_io {
 		struct spdk_bdev_io_abort_params abort;
 		struct spdk_bdev_io_nvme_passthru_params nvme_passthru;
 		struct spdk_bdev_io_zone_mgmt_params zone_mgmt;
+		struct spdk_bdev_io_kv_params kv;
 	} u;
 
 	uint64_t reserved3;

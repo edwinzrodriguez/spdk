@@ -117,6 +117,11 @@
 	spdk_bdev_get_nvme_ctratt;
 	spdk_bdev_get_io_type_name;
 	spdk_bdev_get_io_type;
+	spdk_bdev_kv_retrieve;
+	spdk_bdev_kv_store;
+	spdk_bdev_kv_list;
+	spdk_bdev_kv_exist;
+	spdk_bdev_kv_delete;
 
 	# Public functions in bdev_module.h
 	spdk_bdev_register;

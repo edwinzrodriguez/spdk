@@ -1458,6 +1458,18 @@ nvme controller is also updated to recognize namespaces with the KV command set 
 and issue the appropriate identify operations to initialize the namespace's kv data structures.
 Note, for now, we only use the the parameters from the first KV format specifier in the namespace.
 
+### bdev
+
+Add bdev KV operation for store, retrieve, exist, delete and list in `bdev.h`
+
+- `spdk_bdev_kv_store` Submit a store request to the kv bdev
+- `spdk_bdev_kv_retrieve` Submit a KV retrieve request to the kv bdev
+- `spdk_bdev_kv_delete` Submit a delete key request to the kv bdev
+- `spdk_bdev_kv_exist` Submit a request to test key existence to the kv bdev
+- `spdk_bdev_kv_list` Submit a list keys request to the kv bdev
+
+Added kv fields to `spdk_bdev_io` - `key_len`, `key`, `buffer`,  and `buffer_len`
+
 ### accel_fw
 
 Added API `spdk_accel_submit_copy_crc32c` to perform a CRC32C while copying data.
