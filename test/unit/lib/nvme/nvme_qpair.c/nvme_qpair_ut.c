@@ -57,6 +57,10 @@ DEFINE_STUB(spdk_nvme_ctrlr_free_io_qpair, int, (struct spdk_nvme_qpair *qpair),
 DEFINE_STUB_V(nvme_transport_ctrlr_disconnect_qpair, (struct spdk_nvme_ctrlr *ctrlr,
 		struct spdk_nvme_qpair *qpair));
 DEFINE_STUB_V(nvme_ctrlr_disconnect_qpair, (struct spdk_nvme_qpair *qpair));
+DEFINE_STUB(spdk_kv_key_fmt_lower, int, (char *uuid_str, size_t uuid_str_size, uint32_t key_len,
+		const uint8_t *key), 0);
+DEFINE_STUB(spdk_kv_cmd_fmt_lower, int, (const struct spdk_nvme_kv_cmd *kv_cmd, char *uuid_str,
+		size_t uuid_str_size), 0);
 
 DEFINE_STUB_V(nvme_ctrlr_complete_queued_async_events, (struct spdk_nvme_ctrlr *ctrlr));
 
