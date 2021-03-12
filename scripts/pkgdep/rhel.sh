@@ -115,6 +115,8 @@ if [[ $INSTALL_DEV_TOOLS == "true" ]]; then
 		yum install -y python-pycodestyle lcov ShellCheck
 	fi
 	yum install -y git astyle sg3_utils pciutils libabigail bash-completion
+	# DPDK won't compile w/out this
+	yum install -y libpcap-devel
 	# ROCKSDB requires this
 	yum install -y snappy-devel
 fi
