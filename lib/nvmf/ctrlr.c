@@ -4513,7 +4513,7 @@ spdk_nvmf_request_exec(struct spdk_nvmf_request *req)
 	}
 
 	if (SPDK_DEBUGLOG_FLAG_ENABLED("nvmf")) {
-		spdk_nvme_print_command(qpair->qid, &req->cmd->nvme_cmd);
+		spdk_nvme_print_command_csi(qpair->qid, &req->cmd->nvme_cmd, SPDK_NVME_CSI_NVM);
 	}
 
 	/* Place the request on the outstanding list so we can keep track of it */

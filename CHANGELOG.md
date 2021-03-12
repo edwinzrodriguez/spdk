@@ -838,6 +838,24 @@ The `spdk_fd_group_add` API now takes a `name` parameter.
 
 ## v21.07
 
+### KV
+
+Implement KV NVMe host interface, added
+nvme_kv_spec.h: kv specific types
+nvme_kv.h: KV nvme interface declarations:
+
+- `spdk_nvme_kv_cmd_store` Set a value with specified key
+- `spdk_nvme_kv_cmd_retrieve` Return the value for a key
+- `spdk_nvme_kv_cmd_delete` Delete a key
+- `spdk_nvme_kv_cmd_exist` Test if a key exists
+- `spdk_nvme_kv_cmd_list` Return a list of keys beginning at a specific key
+- `spdk_nvme_kv_cmd_set_key` Helper to set the key in a cmd
+- `spdk_nvme_kv_cmd_get_key` Helper to retrieve the key from a cmd
+
+nvme controller is also updated to recognize namespaces with the KV command set identifier
+and issue the appropriate identify operations to initialize the namespace's kv data structures.
+Note, for now, we only use the the parameters from the first KV format specifier in the namespace.
+
 ### accel_fw
 
 Added API `spdk_accel_submit_copy_crc32c` to perform a CRC32C while copying data.
