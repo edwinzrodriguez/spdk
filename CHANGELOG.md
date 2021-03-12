@@ -1484,6 +1484,10 @@ TP 4056 "Namespace Types".
 - Added handlers for KV operations - store, retrieve, exist, delete, and list.
 - Added `nvmf_bdev_ctrlr_identify_ns_kv` to return KV identify data.
 
+### KV
+
+Implement KV null bdev, with rpc calls `bdev_kv_null_create` and `bdev_kv_null_delete` to manage them.
+
 ### accel_fw
 
 Added API `spdk_accel_submit_copy_crc32c` to perform a CRC32C while copying data.

@@ -379,6 +379,33 @@ def bdev_raid_set_options(client, process_window_size_kb=None, process_max_bandw
     return client.call('bdev_raid_set_options', params)
 
 
+def bdev_kv_null_create(client, capacity, name, uuid=None):
+    """Construct a KV null block device.
+
+    Args:
+        capacity: size of device in bytes
+        name: name of block device
+        uuid: UUID of block device (optional)
+
+    Returns:
+        Name of created KV device.
+    """
+    params = {'name': name, 'capacity': capacity}
+    if uuid:
+        params['uuid'] = uuid
+    return client.call('bdev_kv_null_create', params)
+
+
+def bdev_kv_null_delete(client, name):
+    """Remove KV null bdev from the system.
+
+    Args:
+        name: name of null bdev to delete
+    """
+    params = {'name': name}
+    return client.call('bdev_kv_null_delete', params)
+
+
 def bdev_raid_get_bdevs(client, category):
     """Get list of raid bdevs based on category
     Args:
