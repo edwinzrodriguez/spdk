@@ -482,6 +482,11 @@ struct spdk_bdev {
 	uint32_t max_value;
 
 	/**
+	 * Specify whether bdev is kv device.
+	 */
+	bool kv;
+
+	/**
 	 * Specifies whether bdev supports media management events.
 	 */
 	bool media_events;

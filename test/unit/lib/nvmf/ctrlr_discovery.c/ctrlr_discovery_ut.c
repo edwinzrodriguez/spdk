@@ -78,6 +78,8 @@ DEFINE_STUB(spdk_nvme_transport_id_trtype_str, const char *,
 
 DEFINE_STUB(spdk_bdev_is_zoned, bool, (const struct spdk_bdev *bdev), false);
 
+DEFINE_STUB(spdk_bdev_is_kv, bool, (const struct spdk_bdev *bdev), false);
+
 DEFINE_STUB(spdk_bdev_get_max_zone_append_size, uint32_t,
 	    (const struct spdk_bdev *bdev), 0);
 

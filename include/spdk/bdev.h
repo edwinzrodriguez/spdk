@@ -649,6 +649,14 @@ bool spdk_bdev_is_md_separate(const struct spdk_bdev *bdev);
 bool spdk_bdev_is_zoned(const struct spdk_bdev *bdev);
 
 /**
+ * Checks if bdev supports kv namespace semantics.
+ *
+ * \param bdev Block device to query.
+ * \return true if device supports zoned kv semantics.
+ */
+bool spdk_bdev_is_kv(const struct spdk_bdev *bdev);
+
+/**
  * Get block device data block size.
  *
  * Data block size is equal to block size if there is no metadata or
