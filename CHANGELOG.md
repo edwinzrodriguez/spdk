@@ -97,6 +97,24 @@ Two new accelerated crc32 functions `spdk_accel_submit_crc32cv` and
 `spdk_accel_batch_prep_crc32cv` are added in order to provide the
 chained accelerated CRC32 computation support.
 
+### KV
+
+Implement KV NVMe host interface, added
+nvme_kv_spec.h: kv specific types
+nvme_kv.h: KV nvme interface declarations:
+
+	spdk_nvme_kv_cmd_store
+	spdk_nvme_kv_cmd_retrieve
+	spdk_nvme_kv_cmd_delete
+	spdk_nvme_kv_cmd_exist
+	spdk_nvme_kv_cmd_list
+	spdk_nvme_kv_cmd_set_key
+	spdk_nvme_kv_cmd_get_key
+
+nvme controller is also updated to recognize namespaces with the KV command set identifier
+and issue the appropriate identify operations to initialize the namespace's kv data structures.
+Note, for now, we only use the the parameters from the first KV format specifier in the namespace.
+
 ### bdev
 
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.

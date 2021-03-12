@@ -3453,8 +3453,9 @@ uint16_t spdk_nvme_qpair_get_id(struct spdk_nvme_qpair *qpair);
  *
  * \param qid Queue identifier.
  * \param cmd Pointer to the submission queue command to be formatted.
+ * \param csi IO command set.
  */
-void spdk_nvme_print_command(uint16_t qid, struct spdk_nvme_cmd *cmd);
+void spdk_nvme_print_command(uint16_t qid, struct spdk_nvme_cmd *cmd, enum spdk_nvme_csi csi);
 
 /**
  * \brief Prints (SPDK_NOTICELOG) the contents of an NVMe completion queue entry.
