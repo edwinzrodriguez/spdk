@@ -2197,6 +2197,7 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 
 	/* Cache the zcopy capability of the bdev device */
 	ns->zcopy = spdk_bdev_io_type_supported(ns->bdev, SPDK_BDEV_IO_TYPE_ZCOPY);
+	ns->kv = spdk_bdev_io_type_supported(ns->bdev, SPDK_BDEV_IO_TYPE_KV_STORE);
 
 	if (spdk_uuid_is_null(&opts.uuid)) {
 		opts.uuid = *spdk_bdev_get_uuid(ns->bdev);
@@ -2225,6 +2226,17 @@ spdk_nvmf_subsystem_add_ns_ext(struct spdk_nvmf_subsystem *subsystem, const char
 		}
 
 		subsystem->max_zone_append_size_kib = max_zone_append_size_kib;
+	}
+	if (spdk_bdev_is_kv(ns->bdev)) {
+		SPDK_DEBUGLOG(nvmf, "The added namespace is backed by a KV device.\n");
+		ns->csi = SPDK_NVME_CSI_KV;
+		ns->process_io_cmd = nvmf_ctrlr_process_kv_io_cmd;
+	} else {
+		ns->process_io_cmd = nvmf_ctrlr_process_nvm_io_cmd;
+	}
+	if (spdk_bdev_is_zoned(ns->bdev) && spdk_bdev_is_kv(ns->bdev)) {
+		SPDK_ERRLOG("Namespace cannot be both zoned and key-value.\n");
+		goto err;
 	}
 
 	first_ns = spdk_nvmf_subsystem_get_first_ns(subsystem);

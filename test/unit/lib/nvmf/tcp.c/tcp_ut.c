@@ -33,6 +33,8 @@ static void *g_accel_p = (void *)0xdeadbeaf;
 
 SPDK_LOG_REGISTER_COMPONENT(nvmf)
 
+static uint64_t g_test_bdev_num_blocks;
+
 DEFINE_STUB(spdk_nvmf_qpair_get_listen_trid,
 	    int,
 	    (struct spdk_nvmf_qpair *qpair, struct spdk_nvme_transport_id *trid),
@@ -244,6 +246,7 @@ DEFINE_STUB(spdk_bdev_get_max_active_zones, uint32_t,
 DEFINE_STUB(spdk_bdev_get_max_open_zones, uint32_t,
 	    (const struct spdk_bdev *bdev), 0);
 DEFINE_STUB(spdk_bdev_is_zoned, bool, (const struct spdk_bdev *bdev), false);
+DEFINE_STUB(spdk_bdev_is_kv, bool, (const struct spdk_bdev *bdev), false);
 DEFINE_STUB(spdk_bdev_get_zone_size, uint64_t, (const struct spdk_bdev *bdev), 0);
 
 DEFINE_STUB(spdk_nvme_ns_get_format_index, uint32_t,
@@ -273,6 +276,12 @@ struct spdk_io_channel *
 spdk_accel_get_io_channel(void)
 {
 	return spdk_get_io_channel(g_accel_p);
+}
+
+uint64_t
+spdk_bdev_get_num_blocks(const struct spdk_bdev *bdev)
+{
+	return g_test_bdev_num_blocks;
 }
 
 DEFINE_STUB(spdk_accel_submit_crc32cv,
@@ -321,10 +330,41 @@ spdk_key_get_name(struct spdk_key *k)
 {
 	return k->name;
 }
+DEFINE_STUB(nvmf_bdev_ctrlr_retrieve_cmd,
+	    int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+	     struct spdk_io_channel *ch, struct spdk_nvmf_request *req),
+	    0);
+
+DEFINE_STUB(nvmf_bdev_ctrlr_store_cmd,
+	    int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+	     struct spdk_io_channel *ch, struct spdk_nvmf_request *req),
+	    0);
+
+DEFINE_STUB(nvmf_bdev_ctrlr_list_cmd,
+	    int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+	     struct spdk_io_channel *ch, struct spdk_nvmf_request *req),
+	    0);
+
+DEFINE_STUB(nvmf_bdev_ctrlr_exist_cmd,
+	    int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+	     struct spdk_io_channel *ch, struct spdk_nvmf_request *req),
+	    0);
+
+DEFINE_STUB(nvmf_bdev_ctrlr_delete_cmd,
+	    int,
+	    (struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
+	     struct spdk_io_channel *ch, struct spdk_nvmf_request *req),
+	    0);
 
 struct spdk_bdev {
 	int ut_mock;
 	uint64_t blockcnt;
+	uint64_t nsze;
+	uint64_t nuse;
 };
 
 int
@@ -403,6 +443,17 @@ nvmf_bdev_ctrlr_identify_ns(struct spdk_nvmf_ns *ns, struct spdk_nvme_ns_data *n
 	nsdata->flbas.format = 0;
 	nsdata->flbas.msb_format = 0;
 	nsdata->lbaf[0].lbads = spdk_u32log2(512);
+}
+
+void
+nvmf_bdev_ctrlr_identify_ns_kv(struct spdk_nvmf_ns *ns, struct spdk_nvme_kv_ns_data *nsdata)
+{
+	SPDK_CU_ASSERT_FATAL(ns->bdev != NULL);
+
+	nsdata->nsze = ns->bdev->nsze;
+	nsdata->nuse = ns->bdev->nuse;
+	nsdata->nkvf = 0;
+
 }
 
 const char *

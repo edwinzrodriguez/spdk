@@ -18,6 +18,7 @@ DEFINE_STUB(spdk_bdev_get_optimal_open_zones, uint32_t, (const struct spdk_bdev 
 DEFINE_STUB(spdk_bdev_get_by_name, struct spdk_bdev *, (const char *bdev_name), NULL);
 DEFINE_STUB(spdk_bdev_is_md_separate, bool, (const struct spdk_bdev *bdev), false);
 DEFINE_STUB(spdk_bdev_is_zoned, bool, (const struct spdk_bdev *bdev), false);
+DEFINE_STUB(spdk_bdev_is_kv, bool, (const struct spdk_bdev *bdev), false);
 DEFINE_STUB(spdk_bdev_zone_appendv, int, (struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 		struct iovec *iov, int iovcnt, uint64_t zone_id, uint64_t num_blocks,
 		spdk_bdev_io_completion_cb cb, void *cb_arg), 0);
