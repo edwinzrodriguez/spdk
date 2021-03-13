@@ -44,6 +44,7 @@
 #include "spdk/bdev_module.h"
 #include "spdk/log.h"
 #include "spdk/nvme_kv.h"
+#include "spdk/nvmf_transport.h"
 
 #include "bdev_kv_malloc.h"
 #include "bdev_kv_malloc_store.h"
@@ -80,10 +81,32 @@ bdev_kv_malloc_destruct(void *ctx)
 	struct kv_malloc_bdev *bdev = ctx;
 
 	TAILQ_REMOVE(&g_kv_malloc_bdev_head, bdev, tailq);
+
+	kv_malloc_store_destroy();
 	free(bdev->bdev.name);
 	free(bdev);
 
 	return 0;
+}
+
+static bool
+valid_key_size(uint32_t key_size)
+{
+	/* TODO use spdk_nvme_kv_get_max_key_len(struct spdk_nvme_ns *ns) ? */
+	if ((key_size < 1) || (key_size > KV_MAX_KEY_SIZE)) {
+		return false;
+	}
+	return true;
+}
+
+static bool
+valid_value_size(uint32_t value_size)
+{
+	/* TODO use spdk_nvme_kv_get_max_key_len(struct spdk_nvme_ns *ns) ? */
+	if (value_size > KV_MAX_VALUE_SIZE) {
+		return false;
+	}
+	return true;
 }
 
 static bool
@@ -209,6 +232,14 @@ bdev_kv_malloc_create(struct spdk_bdev **bdev, const struct spdk_kv_malloc_bdev_
 		free(kv_malloc_disk);
 		return -ENOMEM;
 	}
+
+	rc = kv_malloc_store_create();
+	if (rc) {
+		free(kv_malloc_disk->bdev.name);
+		free(kv_malloc_disk);
+		return rc;
+	}
+
 	kv_malloc_disk->bdev.product_name = "KV Malloc disk";
 
 	kv_malloc_disk->bdev.write_cache = 0;
@@ -226,6 +257,7 @@ bdev_kv_malloc_create(struct spdk_bdev **bdev, const struct spdk_kv_malloc_bdev_
 
 	rc = spdk_bdev_register(&kv_malloc_disk->bdev);
 	if (rc) {
+		kv_malloc_store_destroy();
 		free(kv_malloc_disk->bdev.name);
 		free(kv_malloc_disk);
 		return rc;
@@ -252,40 +284,100 @@ bdev_kv_malloc_delete(struct spdk_bdev *bdev, spdk_delete_kv_malloc_complete cb_
 static void
 kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
+	int err;
 	enum spdk_bdev_io_status retval = SPDK_BDEV_IO_STATUS_FAILED;
 
-	/* TODO get from bdev_io */
-	uint32_t *key = NULL;
-	uint8_t key_size = 0;
-	void *value_loc;
-	uint32_t value_size;
+	switch (bdev_io->type) {
+	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
+	case SPDK_BDEV_IO_TYPE_KV_STORE:
+	case SPDK_BDEV_IO_TYPE_KV_EXIST:
+	case SPDK_BDEV_IO_TYPE_KV_DELETE:
+		if (!valid_key_size(bdev_io->u.kv.key_len)) {
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
+			spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
+			return;
+		}
+	}
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV RETRIEVE\n");
 		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
-		retval = kv_malloc_get(key, key_size, &value_loc, &value_size);
-		/* TODO return the value */
+		err = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
+				    &(bdev_io->u.kv.buffer_len));
+		switch (err) {
+		case ENOENT:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+			break;
+		default:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+		}
+		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		break;
+
 	case SPDK_BDEV_IO_TYPE_KV_STORE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV STORE\n");
-		retval = kv_malloc_insert(key, key_size, value_loc, value_size);
+		if (!valid_value_size(bdev_io->u.kv.buffer_len)) {
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_INVALID_VALUE_SIZE;
+			retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+		} else {
+			/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
+			err = kv_malloc_insert(bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
+					       bdev_io->u.kv.buffer_len);
+			switch (err) {
+			case ENOMEM:
+				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_INTERNAL_DEVICE_ERROR;
+				retval = SPDK_BDEV_IO_STATUS_NOMEM;
+				break;
+			case EEXIST:
+				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_EXISTS;
+				retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+				break;
+			default:
+				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+				retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+			}
+		}
 		break;
-	case SPDK_BDEV_IO_TYPE_KV_EXIST:
+
+	case SPDK_BDEV_IO_TYPE_KV_EXIST: {
+		void *value_loc;
+		uint32_t value_size;
+
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
-		retval = kv_malloc_get(key, key_size, &value_loc, &value_size);
-		/* TODO return whether found */
+		err = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
+		switch (err) {
+		case ENOENT:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+			break;
+		default:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+		}
+		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		break;
+	}
+
 	case SPDK_BDEV_IO_TYPE_KV_DELETE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV DELETE\n");
-		retval = kv_malloc_delete(key, key_size);
+		err = kv_malloc_delete(bdev_io->u.kv.key, bdev_io->u.kv.key_len);
+		switch (err) {
+		case ENOENT:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
+			break;
+		default:
+			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+		}
+		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		break;
+
 	case SPDK_BDEV_IO_TYPE_KV_LIST:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV LIST\n");
 		/* TODO might take a key as starting point */
-		retval = kv_malloc_list(/* TODO args */);
-		/* TODO return the list */
+		err = kv_malloc_list(/* TODO args */);
+		/* TODO return the list and set nvme.sc code */
+		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		break;
+
 	default:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Unhandled KV cmd: %d\n", bdev_io->type);
 	}
