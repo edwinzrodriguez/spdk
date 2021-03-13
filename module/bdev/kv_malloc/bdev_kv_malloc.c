@@ -80,6 +80,8 @@ bdev_kv_malloc_destruct(void *ctx)
 	struct kv_malloc_bdev *bdev = ctx;
 
 	TAILQ_REMOVE(&g_kv_malloc_bdev_head, bdev, tailq);
+
+	kv_malloc_store_destroy();
 	free(bdev->bdev.name);
 	free(bdev);
 
@@ -235,6 +237,8 @@ bdev_kv_malloc_create(struct spdk_bdev **bdev, const struct spdk_kv_malloc_bdev_
 
 	TAILQ_INSERT_TAIL(&g_kv_malloc_bdev_head, kv_malloc_disk, tailq);
 
+	kv_malloc_store_init();
+
 	return rc;
 }
 
@@ -255,8 +259,8 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 	enum spdk_bdev_io_status retval = SPDK_BDEV_IO_STATUS_FAILED;
 
 	/* TODO get from bdev_io */
-	uint32_t *key = NULL;
-	uint8_t key_size = 0;
+	uint8_t *key = NULL;
+	uint32_t key_size = 0;
 	void *value_loc;
 	uint32_t value_size;
 
@@ -269,7 +273,9 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		break;
 	case SPDK_BDEV_IO_TYPE_KV_STORE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV STORE\n");
-		retval = kv_malloc_insert(key, key_size, value_loc, value_size);
+		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
+		retval = kv_malloc_insert(bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
+					  bdev_io->u.kv.buffer_len);
 		break;
 	case SPDK_BDEV_IO_TYPE_KV_EXIST:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
