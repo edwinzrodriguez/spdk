@@ -258,40 +258,42 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 {
 	enum spdk_bdev_io_status retval = SPDK_BDEV_IO_STATUS_FAILED;
 
-	/* TODO get from bdev_io */
-	uint8_t *key = NULL;
-	uint32_t key_size = 0;
-	void *value_loc;
-	uint32_t value_size;
-
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV RETRIEVE\n");
 		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
-		retval = kv_malloc_get(key, key_size, &value_loc, &value_size);
-		/* TODO return the value */
+		retval = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
+				       &(bdev_io->u.kv.buffer_len));
 		break;
+
 	case SPDK_BDEV_IO_TYPE_KV_STORE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV STORE\n");
 		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
 		retval = kv_malloc_insert(bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
 					  bdev_io->u.kv.buffer_len);
 		break;
-	case SPDK_BDEV_IO_TYPE_KV_EXIST:
+
+	case SPDK_BDEV_IO_TYPE_KV_EXIST: {
+		void *value_loc;
+		uint32_t value_size;
+
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
-		retval = kv_malloc_get(key, key_size, &value_loc, &value_size);
-		/* TODO return whether found */
+		retval = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
 		break;
+	}
+
 	case SPDK_BDEV_IO_TYPE_KV_DELETE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV DELETE\n");
-		retval = kv_malloc_delete(key, key_size);
+		retval = kv_malloc_delete(bdev_io->u.kv.key, bdev_io->u.kv.key_len);
 		break;
+
 	case SPDK_BDEV_IO_TYPE_KV_LIST:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV LIST\n");
 		/* TODO might take a key as starting point */
 		retval = kv_malloc_list(/* TODO args */);
 		/* TODO return the list */
 		break;
+
 	default:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Unhandled KV cmd: %d\n", bdev_io->type);
 	}
