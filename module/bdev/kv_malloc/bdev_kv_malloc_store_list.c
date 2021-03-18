@@ -3,8 +3,13 @@
  */
 
 /*
- * Use a simple but slow list as the backend for KV Malloc
+ * bdev_kv_malloc_store_list.c
+ *
+ * Use a simple but slow ordered list as the backend for KV Malloc
  * to validate the API and functionality.
+ *
+ * Compile a different bdev_kv_malloc_store_*.c file for higher
+ * performance.
  */
 
 #include "spdk/bdev_module.h"
@@ -23,17 +28,6 @@ struct list_node {
 
 static LIST_HEAD(list_head_type, list_node) list_head;
 
-void
-kv_malloc_store_init(void)
-{
-	LIST_INIT(&list_head);
-}
-
-void
-kv_malloc_store_destroy(void)
-{
-	/* TODO */
-}
 
 /* return -1 if key < node
  * return 0 if key == node
@@ -93,27 +87,58 @@ make_new_node(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value_si
 	return new_node;
 }
 
-enum spdk_bdev_io_status
-kv_malloc_get(uint8_t *key, uint32_t key_size, void **value_out, uint32_t *value_size) {
+static void
+delete_node(struct list_node *node)
+{
+	if (node) {
+		/* TODO right now the value is in the node, and they are dynamically allocated */
+		free(node);
+	}
+}
+
+int
+kv_malloc_store_create(void)
+{
+	LIST_INIT(&list_head);
+
+	return 0;
+}
+
+void
+kv_malloc_store_destroy(void)
+{
+	struct list_node *np;
+	while ((np = LIST_FIRST(&list_head)) != NULL) {
+		LIST_REMOVE(np, link);
+		delete_node(np);
+	}
+}
+
+/* TODO unit tests
+ * get from empty list
+ * get beginning, middle, end
+ * get with key not found
+ */
+int
+kv_malloc_get(uint8_t *key, uint32_t key_size, void **value_out, uint32_t *value_size)
+{
 
 	*value_out = NULL;
 	*value_size = 0;
 
-	if (LIST_EMPTY(&list_head))
-	{
-		return SPDK_BDEV_IO_STATUS_NOMEM; /* TODO or should this be SPDK_BDEV_IO_STATUS_FAILED? */
+	if (LIST_EMPTY(&list_head)) {
+		return ENOENT;
 	}
 
 	/* traverse list to find entry */
-	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link))
-	{
+	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare == 0) {
 			/* key found */
 			/* TODO want to avoid copy, but need to trust that caller won't modify it */
 			*value_out = np->val;
 			*value_size = np->val_len;
-			return SPDK_BDEV_IO_STATUS_SUCCESS;
+			return 0;
 		} else if (compare > 0) {
 			/* already passed the place where this key should have been */
 			break;
@@ -122,59 +147,66 @@ kv_malloc_get(uint8_t *key, uint32_t key_size, void **value_out, uint32_t *value
 	}
 
 	/* Not found */
-	return SPDK_BDEV_IO_STATUS_NOMEM; /* TODO should be same as error above */
+	return ENOENT;
 }
 
-enum spdk_bdev_io_status
-kv_malloc_insert(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value_size) {
+/* TODO unit tests
+ * insert empty
+ * insert beginning, middle, end
+ * insert duplicate key
+ */
+int
+kv_malloc_insert(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value_size)
+{
 
 	/* TODO Avoid allocating memory in the data path.  Have a pre-created freelist. */
-	if (LIST_EMPTY(&list_head))
-	{
+	if (LIST_EMPTY(&list_head)) {
 		struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 		if (!new_node) {
-			return SPDK_BDEV_IO_STATUS_NOMEM;
+			return ENOMEM;
 		}
 		LIST_INSERT_HEAD(&list_head, new_node, link);
-		return SPDK_BDEV_IO_STATUS_SUCCESS;
+		return 0;
 	}
 
 	/* traverse list and insert in order */
 	struct list_node *prev = NULL;
-	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link))
-	{
+	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare < 0) {
 			struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 			if (!new_node) {
-				return SPDK_BDEV_IO_STATUS_NOMEM;
+				return ENOMEM;
 			}
 			LIST_INSERT_BEFORE(np, new_node, link);
-			return SPDK_BDEV_IO_STATUS_SUCCESS;
+			return 0;
 		} else if (compare == 0) {
 			/* key already in use */
-			return SPDK_BDEV_IO_STATUS_FAILED;
+			return EEXIST;
 		}
+		/* else keep going.  Haven't found the position yet. */
 		prev = np;
 	}
 
 	struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
-	if (!new_node)
-	{
-		return SPDK_BDEV_IO_STATUS_NOMEM;
+	if (!new_node) {
+		return ENOMEM;
 	}
 	LIST_INSERT_AFTER(prev, new_node, link);
-	return SPDK_BDEV_IO_STATUS_SUCCESS;
+	return 0;
 }
 
+/* TODO unit tests
+ * delete from empty list
+ * delete beginning, middle, end
+ * delete with key not found
+ */
 enum spdk_bdev_io_status
 kv_malloc_delete(uint8_t *key, uint32_t key_size) {
 
 	if (LIST_EMPTY(&list_head))
 	{
-		return SPDK_BDEV_IO_STATUS_NOMEM; /* TODO Does NVMe KV have idempotent semantics?
-		                                   * Should we return success or failure if the item is already gone?
-		                                   */
+		return ENOENT;
 	}
 
 	/* traverse list to find entry */
@@ -184,8 +216,9 @@ kv_malloc_delete(uint8_t *key, uint32_t key_size) {
 		if (compare == 0) {
 			/* key found */
 			LIST_REMOVE(np, link);
-			return SPDK_BDEV_IO_STATUS_SUCCESS;
-		} else if (compare > 0) {
+			delete_node(np);
+			return 0;
+		} else if (compare < 0) {
 			/* already passed the place where this key should have been */
 			break;
 		}
@@ -193,11 +226,12 @@ kv_malloc_delete(uint8_t *key, uint32_t key_size) {
 	}
 
 	/* Not found */
-	return SPDK_BDEV_IO_STATUS_NOMEM; /* TODO should be same as error above */
+	return ENOENT;
 }
 
-enum spdk_bdev_io_status
-kv_malloc_list(void /* TODO args */) {
+int
+kv_malloc_list(void /* TODO args */)
+{
 	/* TODO */
-	return SPDK_BDEV_IO_STATUS_SUCCESS;
+	return 0;
 }
