@@ -346,37 +346,15 @@ static void bdev_rocksdb_list(struct spdk_io_channel *_ch, struct spdk_bdev_io *
 							  SPDK_NVME_SC_KV_UNRECOVERED_ERROR);
 			break;
 		}
-		struct spdk_nvme_kv_ns_list_data *list_data = (struct spdk_nvme_kv_ns_list_data *)
-				bdev_io->u.kv.buffer;
-		uint32_t bytes_left = bdev_io->u.kv.buffer_len;
-		if (bytes_left < sizeof(*list_data)) {
-			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
-							  SPDK_NVME_SC_INVALID_FIELD);
-			break;
-		}
-		list_data->nrk = 0;
-		bytes_left -= sizeof(list_data->nrk);
-		struct spdk_nvme_kv_key_t *key_data = &list_data->keys[0];
-		while (iter->Valid() && bytes_left >= sizeof(struct spdk_nvme_kv_key_t)) {
+		while (iter->Valid()) {
 			rocksdb::Slice key = iter->key();
-			assert(key.size());
-			if (key.size() > KV_MAX_KEY_SIZE) {
-				SPDK_ERRLOG("Invalid key length %zu\n", key.size());
-				spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
-								  SPDK_NVME_SC_KV_INVALID_KEY_SIZE);
+			int rv = bdev_io->u.kv.list.list_cb(_ch, bdev_io, key.size(), (const uint8_t *)key.data(),
+							    bdev_io->u.kv.buffer, bdev_io->u.kv.buffer_len, &bdev_io->u.kv.list.list_cb_arg);
+			if (rv == 0) {
 				break;
 			}
-			key_data->kl = key.size();
-			memcpy(key_data->key, key.data(), key.size());
-			list_data->nrk++;
-			/* Roundup to the next 4 byte boundary */
-			uint32_t key_len = ((sizeof(key_data->kl) + key.size() + 3) / 4) * 4;
-			key_data = (struct spdk_nvme_kv_key_t *)(((uint8_t *)key_data) + key_len);
-			assert(bytes_left >= key_len);
-			bytes_left -= key_len;
 			iter->Next();
 		}
-
 		delete iter;
 		spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC, SPDK_NVME_SC_SUCCESS);
 	} while (0);

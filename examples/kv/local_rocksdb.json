@@ -14,16 +14,6 @@
         {
           "method": "sock_impl_set_options",
           "params": {
-            "impl_name": "uring",
-            "recv_buf_size": 2097152,
-            "send_buf_size": 2097152,
-            "enable_recv_pipe": true,
-            "enable_zerocopy_send": false
-          }
-        },
-        {
-          "method": "sock_impl_set_options",
-          "params": {
             "impl_name": "posix",
             "recv_buf_size": 2097152,
             "send_buf_size": 2097152,
@@ -41,7 +31,7 @@
           "params": {
             "bdev_io_pool_size": 65535,
             "bdev_io_cache_size": 256,
-            "bdev_auto_examine": false
+            "bdev_auto_examine": true
           }
         },
         {
@@ -74,15 +64,15 @@
             "name": "KV0",
             "db_path": "/tmp/rocksdb",
             "wbs_mb": 64,
-            "compression": false,
+            "compression": true,
             "compaction_style": 0,
-            "sync_write": false,
+            "sync_write": true,
             "disable_write_ahead": false,
             "background_threads_low": 0,
             "background_threads_high": 0,
             "cache_size_mb": 0,
             "optimize_compaction_mb": 0,
-            "uuid": "7ba2391a-6e33-4ee6-8a22-04e658f8afea"
+            "uuid": "f134a61d-2554-4cfa-8ed7-90d72a8ca43e"
           }
         },
         {
@@ -113,12 +103,12 @@
           "params": {
             "trtype": "TCP",
             "max_queue_depth": 128,
-            "max_io_qpairs_per_ctrlr": 16,
+            "max_io_qpairs_per_ctrlr": 8,
             "in_capsule_data_size": 8192,
             "max_io_size": 131072,
             "io_unit_size": 16384,
             "max_aq_depth": 128,
-            "num_shared_buffers": 2048,
+            "num_shared_buffers": 511,
             "buf_cache_size": 32,
             "dif_insert_or_strip": false,
             "c2h_success": true,
@@ -155,7 +145,7 @@
             "namespace": {
               "nsid": 1,
               "bdev_name": "KV0",
-              "uuid": "7fb5d0fa-7e14-4aac-b9c4-6d053abd0e50"
+              "uuid": "f134a61d-2554-4cfa-8ed7-90d72a8ca43e"
             }
           }
         }
