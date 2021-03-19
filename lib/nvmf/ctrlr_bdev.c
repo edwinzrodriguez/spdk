@@ -591,6 +591,33 @@ nvmf_bdev_ctrlr_store_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
 	return SPDK_NVMF_REQUEST_EXEC_STATUS_ASYNCHRONOUS;
 }
 
+static int nvmf_bdev_kv_list_cb(struct spdk_io_channel *ch,
+				struct spdk_bdev_io *bdev_io, uint32_t key_len, const uint8_t *key, void *buffer,
+				uint32_t buffer_len, void **list_cb_arg)
+{
+	if (key_len > KV_MAX_KEY_SIZE) {
+		SPDK_ERRLOG("Invalid key length %u\n", key_len);
+		return -1;
+	}
+	struct spdk_nvme_kv_ns_list_data *list_data = (struct spdk_nvme_kv_ns_list_data *)buffer;
+	struct spdk_nvme_kv_key_t *key_data = (struct spdk_nvme_kv_key_t *)*list_cb_arg;
+
+	uint32_t bytes_consumed = (uint8_t *)key_data - (uint8_t *)list_data;
+	uint32_t bytes_left = buffer_len - bytes_consumed;
+	if (bytes_left >= sizeof(key_data->kl) + key_len) {
+		key_data->kl = key_len;
+		memcpy(key_data->key, key, key_len);
+		list_data->nrk++;
+		/* Roundup to the next 4 byte boundary */
+		uint32_t new_key_len = ((sizeof(key_data->kl) + key_len + 3) / 4) * 4;
+		key_data = (struct spdk_nvme_kv_key_t *)(((uint8_t *)key_data) + new_key_len);
+		*list_cb_arg = key_data;
+		return 1; /* Get next key */
+	} else {
+		return 0; /* No more room for keys */
+	}
+}
+
 int
 nvmf_bdev_ctrlr_list_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
 			 struct spdk_io_channel *ch, struct spdk_nvmf_request *req)
@@ -600,13 +627,22 @@ nvmf_bdev_ctrlr_list_cmd(struct spdk_bdev *bdev, struct spdk_bdev_desc *desc,
 	struct spdk_nvme_kv_key_t key;
 	int rc;
 
+	struct spdk_nvme_kv_ns_list_data *list_data = (struct spdk_nvme_kv_ns_list_data *)
+			req->iov[0].iov_base;
+	uint32_t bytes_left = req->iov[0].iov_len;
+	if (bytes_left < sizeof(*list_data)) {
+		rsp->status.sct = SPDK_NVME_SCT_GENERIC;
+		rsp->status.sc = SPDK_NVME_SC_INTERNAL_DEVICE_ERROR;
+		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
+	}
+	list_data->nrk = 0;
 	spdk_nvme_kv_cmd_get_key(cmd, &key);
 	rc = spdk_bdev_kv_list(desc, ch, key.kl, key.key, req->iov[0].iov_base,
 			       req->iov[0].iov_len,
-			       nvmf_bdev_ctrlr_complete_cmd, req);
+			       nvmf_bdev_ctrlr_complete_cmd, req, nvmf_bdev_kv_list_cb, &list_data->keys[0]);
 	if (spdk_unlikely(rc)) {
 		if (rc == -ENOMEM) {
-			nvmf_bdev_ctrl_queue_io(req, bdev, ch, nvmf_ctrlr_process_io_cmd_resubmit, req);
+			nvmf_bdev_ctrl_queue_io(req, bdev, ch, nvmf_ctrlr_process_io_cmd_resubmit, req->iov[0].iov_base);
 			return SPDK_NVMF_REQUEST_EXEC_STATUS_ASYNCHRONOUS;
 		}
 		rsp->status.sct = SPDK_NVME_SCT_GENERIC;
