@@ -618,6 +618,11 @@ struct spdk_bdev_io {
 				 */
 				void *bio_cb_arg;
 			} abort;
+
+			struct {
+				spdk_bdev_io_kv_list_cb list_cb;
+				void *list_cb_arg;
+			} list;
 		} kv;
 	} u;
 

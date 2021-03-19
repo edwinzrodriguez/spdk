@@ -1807,6 +1807,23 @@ int spdk_bdev_kv_store(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 		       spdk_bdev_io_completion_cb cb, void *cb_arg);
 
 /**
+ * Callback to process keys.  This function is called once per key returned by spdk_bdev_kv_list
+ *
+ * \param ch The I/O channel the bdev I/O was handled on.
+ * \param bdev_io The bdev I/O
+ * \param key_len length of key data.
+ * \param key The key data
+ * \param buffer Output buffer
+ * \param buffer_len Length of output buffer
+ * \param list_cb_arg Pointer to scratch value used by callback function
+ * \return 0 to finish iteration.
+ * \return 1 to retrieve next key.
+ */
+typedef int (*spdk_bdev_io_kv_list_cb)(struct spdk_io_channel *ch,
+				       struct spdk_bdev_io *bdev_io, uint32_t key_len, const uint8_t *key, void *buffer,
+				       uint32_t buffer_len, void **list_cb_arg);
+
+/**
  * Submit a list keys request to the kv bdev on the given channel.
  *
  * \ingroup bdev_io_submit_functions
@@ -1827,7 +1844,7 @@ int spdk_bdev_kv_store(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
  */
 int spdk_bdev_kv_list(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 		      uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
-		      spdk_bdev_io_completion_cb cb, void *cb_arg);
+		      spdk_bdev_io_completion_cb cb, void *cb_arg, spdk_bdev_io_kv_list_cb list_cb, void *list_cb_arg);
 
 /**
  * Submit a read request test key existence to the kv bdev on the given channel.

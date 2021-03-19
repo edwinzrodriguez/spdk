@@ -109,7 +109,7 @@ spdk_bdev_kv_store(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 int
 spdk_bdev_kv_list(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 		  uint32_t key_len, uint8_t *key, void *buf, uint64_t buffer_len,
-		  spdk_bdev_io_completion_cb cb, void *cb_arg)
+		  spdk_bdev_io_completion_cb cb, void *cb_arg, spdk_bdev_io_kv_list_cb list_cb, void *list_cb_arg)
 {
 	struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(desc);
 	struct spdk_bdev_io *bdev_io;
@@ -127,6 +127,8 @@ spdk_bdev_kv_list(struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
 	bdev_io->u.kv.key = key;
 	bdev_io->u.kv.buffer = buf;
 	bdev_io->u.kv.buffer_len = buffer_len;
+	bdev_io->u.kv.list.list_cb = list_cb;
+	bdev_io->u.kv.list.list_cb_arg = list_cb_arg;
 	bdev_io_init(bdev_io, bdev, cb_arg, cb);
 
 	bdev_io_submit(bdev_io);
