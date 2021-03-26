@@ -114,6 +114,7 @@ void spdk_nvme_transport_register(const struct spdk_nvme_transport_ops *ops)
 	new_transport = &g_spdk_transports[g_current_transport_index++];
 
 	new_transport->ops = *ops;
+	SPDK_NOTICELOG("NVMe transport %s registered.\n", ops->name);
 	TAILQ_INSERT_TAIL(&g_spdk_nvme_transports, new_transport, link);
 }
 
