@@ -252,6 +252,7 @@ int _kv_nvme_store_async(kv_nvme_t *nvme, kv_pair *kv, int qid)
 {
 	int ret = KV_ERR_DD_INVALID_PARAM;
 	struct spdk_nvme_qpair *qpair = NULL;
+	struct spdk_nvme_kv_key_t key;
 
 	ENTER();
 
@@ -268,12 +269,23 @@ int _kv_nvme_store_async(kv_nvme_t *nvme, kv_pair *kv, int qid)
 		LEAVE();
 		return ret;
 	}
-	spdk_nvme_kv_key_t *key = (spdk_nvme_kv_key_t *)(kv->key.key);
+	/*
+	 * struct spdk_nvme_kv_key_t *key =  (struct spdk_nvme_kv_key_t *)(kv->key.key);
+	 */
+	if (kv->key.length > spdk_nvme_kv_get_max_key_len(nvme->ns)) {
+		SPDK_ERRLOG("Key length too large\n");
+		return KV_ERR_DD_INVALID_PARAM;
+	}
+	key.kl = kv->key.length;
+	/*
+	 * TODO TSR handle key length less than 16 bytes
+	 */
+	memcpy(key.key, kv->key.key, key.kl);
 	/*
 	 * pthread_spin_lock(&qpair->sq_lock);
 	 */
-	ret = spdk_nvme_kv_cmd_store(nvme->ns, qpair, *key, kv->value.value, kv->value.length,
-				     kv->value.offset, _kv_store_async_io_complete, (void *)kv, kv->param.io_option.store_option);
+	ret = spdk_nvme_kv_cmd_store(nvme->ns, qpair, &key, kv->value.value, kv->value.length,
+				     _kv_store_async_io_complete, (void *)kv, kv->param.io_option.store_option);
 	if (ret) {
 		SPDK_ERRLOG("Error in Performing Store on the KV Type SSD");
 	}
@@ -357,6 +369,7 @@ int _kv_nvme_retrieve_async(kv_nvme_t *nvme, kv_pair *kv, int qid)
 {
 	int ret = KV_ERR_DD_INVALID_PARAM;
 	struct spdk_nvme_qpair *qpair = NULL;
+	struct spdk_nvme_kv_key_t key;
 
 	ENTER();
 
@@ -379,12 +392,21 @@ int _kv_nvme_retrieve_async(kv_nvme_t *nvme, kv_pair *kv, int qid)
 		LEAVE();
 		return ret;
 	}
-	spdk_nvme_kv_key_t *key = (spdk_nvme_kv_key_t *)(kv->key.key);
+	if (kv->key.length > spdk_nvme_kv_get_max_key_len(nvme->ns)) {
+		SPDK_ERRLOG("Key length too large\n");
+		return KV_ERR_DD_INVALID_PARAM;
+	}
+	key.kl = kv->key.length;
+	/*
+	 * TODO TSR handle key length less than 16 bytes. Initialise with zeros?
+	 */
+	memcpy(key.key, kv->key.key, key.kl);
+
 	/*
 	 * pthread_spin_lock(&qpair->sq_lock);
 	 */
-	ret = spdk_nvme_kv_cmd_retrieve(nvme->ns, qpair, *key, kv->value.value, kv->value.length,
-					kv->value.offset, _kv_retrieve_async_io_complete, (void *)kv, kv->param.io_option.retrieve_option);
+	ret = spdk_nvme_kv_cmd_retrieve(nvme->ns, qpair, &key, kv->value.value, kv->value.length,
+					_kv_retrieve_async_io_complete, (void *)kv, kv->param.io_option.retrieve_option);
 	if (ret) {
 		SPDK_ERRLOG("Error in Performing Retrieve on the KV Type SSD\n");
 	}
@@ -602,7 +624,7 @@ int _kv_nvme_exist_async(kv_nvme_t *nvme, const kv_pair *kv, int qid)
 {
 	int ret = KV_ERR_DD_INVALID_PARAM;
 	struct spdk_nvme_qpair *qpair = NULL;
-
+	struct spdk_nvme_kv_key_t key;
 	ENTER();
 
 	if (!kv || !kv->key.key) {
@@ -622,10 +644,15 @@ int _kv_nvme_exist_async(kv_nvme_t *nvme, const kv_pair *kv, int qid)
 	/*
 	 * pthread_spin_lock(&qpair->sq_lock);
 	 */
-	spdk_nvme_kv_key_t *key = (spdk_nvme_kv_key_t *)(kv->key.key);
-	ret = spdk_nvme_kv_cmd_exist(nvme->ns, qpair, *key, _kv_async_io_complete, (void *)kv);
+	if (kv->key.length > spdk_nvme_kv_get_max_key_len(nvme->ns)) {
+		SPDK_ERRLOG("Key length too large\n");
+		return KV_ERR_DD_INVALID_PARAM;
+	}
+	key.kl = kv->key.length;
+	memcpy(key.key, kv->key.key, key.kl);
+	ret = spdk_nvme_kv_cmd_exist(nvme->ns, qpair, &key, _kv_async_io_complete, (void *)kv);
 	if (ret) {
-		SPDK_ERRLOG("Error in Performing Key Exist on the KV Type SSD");
+		SPDK_ERRLOG("Error in Performing Key Exist on the KV Type SSD\n");
 	}
 	/*
 	 * pthread_spin_unlock(&qpair->sq_lock);
