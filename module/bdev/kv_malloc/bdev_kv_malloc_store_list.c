@@ -14,6 +14,7 @@
 
 #include "spdk/bdev_module.h"
 #include "spdk/nvme_kv.h"
+#include "bdev_kv_malloc_internal.h"
 #include "bdev_kv_malloc_store.h"
 #include <sys/queue.h>
 
@@ -26,8 +27,17 @@ struct list_node {
 	LIST_ENTRY(list_node) link;
 };
 
-static LIST_HEAD(list_head_type, list_node) list_head;
+struct store_list_metadata {
+	LIST_HEAD(list_head_type, list_node) list_head;
+	/* TODO freelist(s) */
+	/* TODO rwlock to cover list and freelists */
+};
 
+static struct store_list_metadata *
+	get_metadata_struct(struct kv_malloc_bdev *bdev)
+{
+	return (struct store_list_metadata *)(bdev->store_metadata);
+}
 
 /* return -1 if key < node
  * return 0 if key == node
@@ -97,20 +107,33 @@ delete_node(struct list_node *node)
 }
 
 int
-kv_malloc_store_create(void)
+kv_malloc_store_create(struct kv_malloc_bdev *bdev)
 {
-	LIST_INIT(&list_head);
+	struct store_list_metadata *md = (struct store_list_metadata *)malloc(sizeof(
+			struct store_list_metadata));
+	bdev->store_metadata = md;
+	if (!md) {
+		return ENOMEM;
+	}
+	LIST_INIT(&(md->list_head));
+	/* TODO init rwlock and freelists */
 
 	return 0;
 }
 
 void
-kv_malloc_store_destroy(void)
+kv_malloc_store_destroy(struct kv_malloc_bdev *bdev)
 {
 	struct list_node *np;
-	while ((np = LIST_FIRST(&list_head)) != NULL) {
-		LIST_REMOVE(np, link);
-		delete_node(np);
+	struct store_list_metadata *md = get_metadata_struct(bdev);
+
+	if (md) {
+		while ((np = LIST_FIRST(&(md->list_head))) != NULL) {
+			LIST_REMOVE(np, link);
+			delete_node(np);
+		}
+		free(md);
+		bdev->store_metadata = NULL;
 	}
 }
 
@@ -120,18 +143,23 @@ kv_malloc_store_destroy(void)
  * get with key not found
  */
 int
-kv_malloc_get(uint8_t *key, uint32_t key_size, void **value_out, uint32_t *value_size)
+kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void **value_out,
+	      uint32_t *value_size)
 {
 
 	*value_out = NULL;
 	*value_size = 0;
+	struct store_list_metadata *md = get_metadata_struct(bdev);
+	if (!md) {
+		return ENODEV;
+	}
 
-	if (LIST_EMPTY(&list_head)) {
+	if (LIST_EMPTY(&(md->list_head))) {
 		return ENOENT;
 	}
 
 	/* traverse list to find entry */
-	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link)) {
+	for (struct list_node *np = LIST_FIRST(&(md->list_head)); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare == 0) {
 			/* key found */
@@ -156,22 +184,27 @@ kv_malloc_get(uint8_t *key, uint32_t key_size, void **value_out, uint32_t *value
  * insert duplicate key
  */
 int
-kv_malloc_insert(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value_size)
+kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *value_in,
+		 uint32_t value_size)
 {
+	struct store_list_metadata *md = get_metadata_struct(bdev);
+	if (!md) {
+		return ENODEV;
+	}
 
 	/* TODO Avoid allocating memory in the data path.  Have a pre-created freelist. */
-	if (LIST_EMPTY(&list_head)) {
+	if (LIST_EMPTY(&(md->list_head))) {
 		struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 		if (!new_node) {
 			return ENOMEM;
 		}
-		LIST_INSERT_HEAD(&list_head, new_node, link);
+		LIST_INSERT_HEAD(&(md->list_head), new_node, link);
 		return 0;
 	}
 
 	/* traverse list and insert in order */
 	struct list_node *prev = NULL;
-	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link)) {
+	for (struct list_node *np = LIST_FIRST(&(md->list_head)); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare < 0) {
 			struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
@@ -201,17 +234,20 @@ kv_malloc_insert(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value
  * delete beginning, middle, end
  * delete with key not found
  */
-enum spdk_bdev_io_status
-kv_malloc_delete(uint8_t *key, uint32_t key_size) {
+int
+kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
+{
+	struct store_list_metadata *md = get_metadata_struct(bdev);
+	if (!md) {
+		return ENODEV;
+	}
 
-	if (LIST_EMPTY(&list_head))
-	{
+	if (LIST_EMPTY(&(md->list_head))) {
 		return ENOENT;
 	}
 
 	/* traverse list to find entry */
-	for (struct list_node *np = LIST_FIRST(&list_head); np != NULL; np = LIST_NEXT(np, link))
-	{
+	for (struct list_node *np = LIST_FIRST(&(md->list_head)); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare == 0) {
 			/* key found */
@@ -230,8 +266,13 @@ kv_malloc_delete(uint8_t *key, uint32_t key_size) {
 }
 
 int
-kv_malloc_list(void /* TODO args */)
+kv_malloc_list(struct kv_malloc_bdev *bdev /* TODO args */)
 {
+	struct store_list_metadata *md = get_metadata_struct(bdev);
+	if (!md) {
+		return ENODEV;
+	}
+
 	/* TODO */
 	return 0;
 }

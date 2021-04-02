@@ -47,12 +47,8 @@
 #include "spdk/nvmf_transport.h"
 
 #include "bdev_kv_malloc.h"
+#include "bdev_kv_malloc_internal.h"
 #include "bdev_kv_malloc_store.h"
-
-struct kv_malloc_bdev {
-	struct spdk_bdev	bdev;
-	TAILQ_ENTRY(kv_malloc_bdev)	tailq;
-};
 
 struct kv_malloc_io_channel {
 	struct spdk_poller		*poller;
@@ -82,7 +78,7 @@ bdev_kv_malloc_destruct(void *ctx)
 
 	TAILQ_REMOVE(&g_kv_malloc_bdev_head, bdev, tailq);
 
-	kv_malloc_store_destroy();
+	kv_malloc_store_destroy(bdev);
 	free(bdev->bdev.name);
 	free(bdev);
 
@@ -233,7 +229,7 @@ bdev_kv_malloc_create(struct spdk_bdev **bdev, const struct spdk_kv_malloc_bdev_
 		return -ENOMEM;
 	}
 
-	rc = kv_malloc_store_create();
+	rc = kv_malloc_store_create(kv_malloc_disk);
 	if (rc) {
 		free(kv_malloc_disk->bdev.name);
 		free(kv_malloc_disk);
@@ -257,7 +253,7 @@ bdev_kv_malloc_create(struct spdk_bdev **bdev, const struct spdk_kv_malloc_bdev_
 
 	rc = spdk_bdev_register(&kv_malloc_disk->bdev);
 	if (rc) {
-		kv_malloc_store_destroy();
+		kv_malloc_store_destroy(kv_malloc_disk);
 		free(kv_malloc_disk->bdev.name);
 		free(kv_malloc_disk);
 		return rc;
@@ -299,11 +295,13 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		}
 	}
 
+	struct kv_malloc_bdev *bdev = (struct kv_malloc_bdev *)(bdev_io->bdev->ctxt);
+
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV RETRIEVE\n");
 		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
-		err = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
+		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
 				    &(bdev_io->u.kv.buffer_len));
 		switch (err) {
 		case ENOENT:
@@ -322,7 +320,7 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 			retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		} else {
 			/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
-			err = kv_malloc_insert(bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
+			err = kv_malloc_insert(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
 					       bdev_io->u.kv.buffer_len);
 			switch (err) {
 			case ENOMEM:
@@ -345,7 +343,7 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		uint32_t value_size;
 
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
-		err = kv_malloc_get(bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
+		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
 		switch (err) {
 		case ENOENT:
 			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
@@ -359,7 +357,7 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 
 	case SPDK_BDEV_IO_TYPE_KV_DELETE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV DELETE\n");
-		err = kv_malloc_delete(bdev_io->u.kv.key, bdev_io->u.kv.key_len);
+		err = kv_malloc_delete(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len);
 		switch (err) {
 		case ENOENT:
 			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
@@ -373,7 +371,7 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 	case SPDK_BDEV_IO_TYPE_KV_LIST:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV LIST\n");
 		/* TODO might take a key as starting point */
-		err = kv_malloc_list(/* TODO args */);
+		err = kv_malloc_list(bdev /* TODO args */);
 		/* TODO return the list and set nvme.sc code */
 		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
 		break;
@@ -439,6 +437,10 @@ bdev_kv_malloc_initialize(void)
 	 * This will be used if upper layer expects us to allocate the read buffer.
 	 *  Instead of using a real rbuf from the bdev pool, just always point to
 	 *  this same zeroed buffer.
+	 */
+	/*
+	 * TODO This was copied from kv_null.  Do we need to do something real here?
+	 * Or do we need it at all, since we aren't using it?
 	 */
 	g_kv_malloc_read_buf = spdk_zmalloc(SPDK_BDEV_LARGE_BUF_MAX_SIZE, 0, NULL,
 					    SPDK_ENV_SOCKET_ID_ANY, SPDK_MALLOC_DMA);
