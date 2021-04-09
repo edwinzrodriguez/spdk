@@ -18,6 +18,23 @@
 #include "bdev_kv_malloc_store.h"
 #include <sys/queue.h>
 
+#ifndef KV_MALLOC_NO_LOCKS
+#define DEF_LOCK(x) pthread_rwlock_t x
+#define INIT_LOCK(x) pthread_rwlock_init((x), NULL)
+#define WLOCK(x) pthread_rwlock_wrlock(x)
+#define RLOCK(x) pthread_rwlock_rdlock(x)
+#define UNLOCK(x) pthread_rwlock_unlock(x)
+#define DESTROY_LOCK(x) pthread_rwlock_destroy(x)
+
+#else
+#define DEF_LOCK(x)
+#define INIT_LOCK(x)
+#define WLOCK(x)
+#define RLOCK(x)
+#define UNLOCK(x)
+#define DESTROY_LOCK(x)
+#endif
+
 struct list_node {
 	uint32_t key_len;
 	uint8_t key[KV_MAX_KEY_SIZE];
@@ -30,7 +47,12 @@ struct list_node {
 struct store_list_metadata {
 	LIST_HEAD(list_head_type, list_node) list_head;
 	/* TODO freelist(s) */
-	/* TODO rwlock to cover list and freelists */
+
+	/*
+	 * rwlock to cover list and freelists
+	 * locking order: list_head, then freelists
+	 */
+	DEF_LOCK(lists_lock);
 };
 
 static struct store_list_metadata *
@@ -115,8 +137,10 @@ kv_malloc_store_create(struct kv_malloc_bdev *bdev)
 	if (!md) {
 		return ENOMEM;
 	}
+	INIT_LOCK(&(md->lists_lock));
 	LIST_INIT(&(md->list_head));
-	/* TODO init rwlock and freelists */
+
+	/* TODO init freelists */
 
 	return 0;
 }
@@ -128,10 +152,13 @@ kv_malloc_store_destroy(struct kv_malloc_bdev *bdev)
 	struct store_list_metadata *md = get_metadata_struct(bdev);
 
 	if (md) {
+		WLOCK(&(md->lists_lock));
 		while ((np = LIST_FIRST(&(md->list_head))) != NULL) {
 			LIST_REMOVE(np, link);
 			delete_node(np);
 		}
+		UNLOCK(&(md->lists_lock));
+		DESTROY_LOCK(&(md->lists_lock));
 		free(md);
 		bdev->store_metadata = NULL;
 	}
@@ -147,6 +174,7 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 	      uint32_t *value_size)
 {
 
+	int retval = 0;
 	*value_out = NULL;
 	*value_size = 0;
 	struct store_list_metadata *md = get_metadata_struct(bdev);
@@ -154,8 +182,11 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 		return ENODEV;
 	}
 
+#define EXIT_WITH(x) retval = (x); goto done
+
+	RLOCK(&(md->lists_lock));
 	if (LIST_EMPTY(&(md->list_head))) {
-		return ENOENT;
+		EXIT_WITH(ENOENT);
 	}
 
 	/* traverse list to find entry */
@@ -166,7 +197,7 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 			/* TODO want to avoid copy, but need to trust that caller won't modify it */
 			*value_out = np->val;
 			*value_size = np->val_len;
-			return 0;
+			EXIT_WITH(0);
 		} else if (compare > 0) {
 			/* already passed the place where this key should have been */
 			break;
@@ -175,7 +206,13 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 	}
 
 	/* Not found */
-	return ENOENT;
+	EXIT_WITH(ENOENT);
+
+done:
+	UNLOCK(&(md->lists_lock));
+	return retval;
+
+#undef EXIT_WITH
 }
 
 /* TODO unit tests
@@ -187,19 +224,23 @@ int
 kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *value_in,
 		 uint32_t value_size)
 {
+	int retval = 0;
 	struct store_list_metadata *md = get_metadata_struct(bdev);
 	if (!md) {
 		return ENODEV;
 	}
 
-	/* TODO Avoid allocating memory in the data path.  Have a pre-created freelist. */
+#define EXIT_WITH(x) retval = (x); goto done
+
+	WLOCK(&(md->lists_lock));
+	/* TODO Avoid allocating memory in the data path, and while holding a lock. Add a pre-created freelist. */
 	if (LIST_EMPTY(&(md->list_head))) {
 		struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 		if (!new_node) {
-			return ENOMEM;
+			EXIT_WITH(ENOMEM);
 		}
 		LIST_INSERT_HEAD(&(md->list_head), new_node, link);
-		return 0;
+		EXIT_WITH(0);
 	}
 
 	/* traverse list and insert in order */
@@ -209,13 +250,13 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 		if (compare < 0) {
 			struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 			if (!new_node) {
-				return ENOMEM;
+				EXIT_WITH(ENOMEM);
 			}
 			LIST_INSERT_BEFORE(np, new_node, link);
-			return 0;
+			EXIT_WITH(0);
 		} else if (compare == 0) {
 			/* key already in use */
-			return EEXIST;
+			EXIT_WITH(EEXIST);
 		}
 		/* else keep going.  Haven't found the position yet. */
 		prev = np;
@@ -223,10 +264,16 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 
 	struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
 	if (!new_node) {
-		return ENOMEM;
+		EXIT_WITH(ENOMEM);
 	}
 	LIST_INSERT_AFTER(prev, new_node, link);
-	return 0;
+	EXIT_WITH(0);
+
+done:
+	UNLOCK(&(md->lists_lock));
+	return retval;
+
+#undef EXIT_WITH
 }
 
 /* TODO unit tests
@@ -237,13 +284,17 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 int
 kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
 {
+	int retval = 0;
 	struct store_list_metadata *md = get_metadata_struct(bdev);
 	if (!md) {
 		return ENODEV;
 	}
 
+#define EXIT_WITH(x) retval = (x); goto done
+
+	WLOCK(&(md->lists_lock));
 	if (LIST_EMPTY(&(md->list_head))) {
-		return ENOENT;
+		EXIT_WITH(ENOENT);
 	}
 
 	/* traverse list to find entry */
@@ -253,7 +304,7 @@ kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
 			/* key found */
 			LIST_REMOVE(np, link);
 			delete_node(np);
-			return 0;
+			EXIT_WITH(0);
 		} else if (compare < 0) {
 			/* already passed the place where this key should have been */
 			break;
@@ -262,7 +313,13 @@ kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
 	}
 
 	/* Not found */
-	return ENOENT;
+	EXIT_WITH(ENOENT);
+
+done:
+	UNLOCK(&(md->lists_lock));
+	return retval;
+
+#undef EXIT_WITH
 }
 
 int

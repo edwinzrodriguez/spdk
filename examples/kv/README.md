@@ -15,7 +15,7 @@ After compiling the repository with make, start the nvmf target with examples:
 ### KV malloc target
 
 ```
-  sudo gdb --arg build/bin/nvmf_tgt -c examples/kv/local_kv.json -s 256
+  sudo gdb --arg build/bin/nvmf_tgt -c examples/kv/local_kv_malloc.json -s 256
 ```
 
 ## Initiators
