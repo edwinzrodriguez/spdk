@@ -281,7 +281,6 @@ static void
 kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
 	int err;
-	enum spdk_bdev_io_status retval = SPDK_BDEV_IO_STATUS_FAILED;
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
@@ -289,8 +288,8 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 	case SPDK_BDEV_IO_TYPE_KV_EXIST:
 	case SPDK_BDEV_IO_TYPE_KV_DELETE:
 		if (!valid_key_size(bdev_io->u.kv.key_len)) {
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_INVALID_KEY_SIZE;
-			spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_NVME_SC_KV_INVALID_KEY_SIZE);
 			return;
 		}
 	}
@@ -304,38 +303,52 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
 				    &(bdev_io->u.kv.buffer_len));
 		switch (err) {
+		case 0:
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+							  SPDK_NVME_SC_SUCCESS);
+			return;
 		case ENOENT:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
-			break;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST);
+			return;
 		default:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_BDEV_IO_STATUS_FAILED);
+			return;
 		}
-		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+		/* will not reach */
 		break;
 
 	case SPDK_BDEV_IO_TYPE_KV_STORE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV STORE\n");
 		if (!valid_value_size(bdev_io->u.kv.buffer_len)) {
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_INVALID_VALUE_SIZE;
-			retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_NVME_SC_KV_INVALID_VALUE_SIZE);
+			return;
 		} else {
 			/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
 			err = kv_malloc_insert(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
 					       bdev_io->u.kv.buffer_len);
 			switch (err) {
+			case 0:
+				spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+								  SPDK_NVME_SC_SUCCESS);
+				return;
 			case ENOMEM:
-				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_INTERNAL_DEVICE_ERROR;
-				retval = SPDK_BDEV_IO_STATUS_NOMEM;
-				break;
+				spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+								  SPDK_NVME_SC_INTERNAL_DEVICE_ERROR);
+				return;
 			case EEXIST:
-				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_EXISTS;
-				retval = SPDK_BDEV_IO_STATUS_SUCCESS;
-				break;
+				spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+								  SPDK_NVME_SC_KV_KEY_EXISTS);
+				return;
 			default:
-				bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
-				retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+				spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+								  SPDK_BDEV_IO_STATUS_FAILED);
+				return;
 			}
 		}
+		/* will not reach */
 		break;
 
 	case SPDK_BDEV_IO_TYPE_KV_EXIST: {
@@ -345,13 +358,20 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
 		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
 		switch (err) {
+		case 0:
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+							  SPDK_NVME_SC_SUCCESS);
+			return;
 		case ENOENT:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
-			break;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST);
+			return;
 		default:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_BDEV_IO_STATUS_FAILED);
+			return;
 		}
-		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+		/* will not reach */
 		break;
 	}
 
@@ -359,28 +379,47 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV DELETE\n");
 		err = kv_malloc_delete(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len);
 		switch (err) {
+		case 0:
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+							  SPDK_NVME_SC_SUCCESS);
+			return;
 		case ENOENT:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST;
-			break;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_NVME_SC_KV_KEY_DOES_NOT_EXIST);
+			return;
 		default:
-			bdev_io->internal.error.nvme.sc = SPDK_NVME_SC_SUCCESS;
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_BDEV_IO_STATUS_FAILED);
+			return;
 		}
-		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+		/* will not reach */
 		break;
 
 	case SPDK_BDEV_IO_TYPE_KV_LIST:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV LIST\n");
 		/* TODO might take a key as starting point */
 		err = kv_malloc_list(bdev /* TODO args */);
-		/* TODO return the list and set nvme.sc code */
-		retval = SPDK_BDEV_IO_STATUS_SUCCESS;
+		switch (err) {
+		case 0:
+			/* TODO return the list */
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+							  SPDK_NVME_SC_SUCCESS);
+			return;
+		default:
+			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_COMMAND_SPECIFIC,
+							  SPDK_BDEV_IO_STATUS_FAILED);
+			return;
+		}
+		/* will not reach */
 		break;
 
 	default:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Unhandled KV cmd: %d\n", bdev_io->type);
 	}
 
-	spdk_bdev_io_complete(bdev_io, retval);
+	/* TODO verify that this is the correct return code */
+	spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+					  SPDK_NVME_SC_INVALID_OPCODE);
 
 	/* TODO need to free at least some of the bdev_io, while leaving the value data intact in the backend memory store */
 }
