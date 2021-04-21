@@ -175,8 +175,18 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 {
 
 	int retval = 0;
-	*value_out = NULL;
-	*value_size = 0;
+	bool test_existence_only = false;
+	if (value_out != NULL) {
+		*value_out = NULL;
+	} else {
+		test_existence_only = true;
+	}
+	if (value_size != NULL) {
+		*value_size = 0;
+	} else if (! test_existence_only) {
+		/* Need to be able to return value_size if returning a value */
+		return EINVAL;
+	}
 	struct store_list_metadata *md = get_metadata_struct(bdev);
 	if (!md) {
 		return ENODEV;
@@ -195,8 +205,10 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 		if (compare == 0) {
 			/* key found */
 			/* TODO want to avoid copy, but need to trust that caller won't modify it */
-			*value_out = np->val;
-			*value_size = np->val_len;
+			if (!test_existence_only) {
+				*value_out = np->val;
+				*value_size = np->val_len;
+			}
 			EXIT_WITH(0);
 		} else if (compare > 0) {
 			/* already passed the place where this key should have been */

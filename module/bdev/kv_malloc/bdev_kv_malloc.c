@@ -352,11 +352,8 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 		break;
 
 	case SPDK_BDEV_IO_TYPE_KV_EXIST: {
-		void *value_loc;
-		uint32_t value_size;
-
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
-		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &value_loc, &value_size);
+		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, NULL, NULL);
 		switch (err) {
 		case 0:
 			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
