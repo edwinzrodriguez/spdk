@@ -281,6 +281,7 @@ static void
 kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_io)
 {
 	int err;
+	uint32_t value_size = 0;
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
@@ -299,12 +300,11 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_KV_RETRIEVE:
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV RETRIEVE\n");
-		/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
-		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, &(bdev_io->u.kv.buffer),
-				    &(bdev_io->u.kv.buffer_len));
+		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, bdev_io->u.kv.buffer,
+				    bdev_io->u.kv.buffer_len, &value_size);
 		switch (err) {
 		case 0:
-			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,
+			spdk_bdev_io_complete_nvme_status(bdev_io, value_size, SPDK_NVME_SCT_GENERIC,
 							  SPDK_NVME_SC_SUCCESS);
 			return;
 		case ENOENT:
@@ -353,7 +353,7 @@ kv_malloc_handle_cmd(struct kv_malloc_io_channel *ch, struct spdk_bdev_io *bdev_
 
 	case SPDK_BDEV_IO_TYPE_KV_EXIST: {
 		SPDK_DEBUGLOG(bdev_kv_malloc, "Handling KV EXIST\n");
-		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, NULL, NULL);
+		err = kv_malloc_get(bdev, bdev_io->u.kv.key, bdev_io->u.kv.key_len, NULL, 0, NULL);
 		switch (err) {
 		case 0:
 			spdk_bdev_io_complete_nvme_status(bdev_io, 0, SPDK_NVME_SCT_GENERIC,

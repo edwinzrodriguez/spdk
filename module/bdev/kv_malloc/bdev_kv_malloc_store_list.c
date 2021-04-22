@@ -25,7 +25,6 @@
 #define RLOCK(x) pthread_rwlock_rdlock(x)
 #define UNLOCK(x) pthread_rwlock_unlock(x)
 #define DESTROY_LOCK(x) pthread_rwlock_destroy(x)
-
 #else
 #define DEF_LOCK(x)
 #define INIT_LOCK(x)
@@ -33,7 +32,9 @@
 #define RLOCK(x)
 #define UNLOCK(x)
 #define DESTROY_LOCK(x)
-#endif
+#endif /* KV_MALLOC_NO_LOCKS */
+
+#define EXIT_WITH(x) retval = (x); goto done
 
 struct list_node {
 	uint32_t key_len;
@@ -44,14 +45,22 @@ struct list_node {
 	LIST_ENTRY(list_node) link;
 };
 
+/*
+ * store_list_metadata is a per-bdev structure that is used to keep
+ * track of persistent information.  In this case, it holds the list
+ * containing the KV pairs, and the list lock.
+ */
 struct store_list_metadata {
 	LIST_HEAD(list_head_type, list_node) list_head;
-	/* TODO freelist(s) */
 
 	/*
-	 * rwlock to cover list and freelists
-	 * locking order: list_head, then freelists
+	 * We could use freelists to speed things up and avoid memory allocations
+	 * in the typical case.  But this list implementation exists for
+	 * validating the API, and not for performance.  Other data structures
+	 * will be used for performance as an alternative to this one,
+	 * so adding freelists here is a low priority
 	 */
+
 	DEF_LOCK(lists_lock);
 };
 
@@ -90,30 +99,51 @@ compare_key_to_node(uint8_t *key, uint32_t key_size, struct list_node *node)
 	return 0;
 }
 
-static void
+static int
 init_node(struct list_node *node, uint8_t *key, uint32_t key_size, void *value_in,
 	  uint32_t value_size)
 {
-	if (node) {
-		node->key_len = key_size;
-		memcpy(node->key, key, key_size);
-		node->val_len = value_size;
-		/* TODO can we keep the current value_in memory without doing a copy? */
-		node->val = &(node[1]);
+	void *new_val = NULL;
+
+	if (!node) {
+		return EINVAL;
+	}
+	if (value_size) {
+		new_val = malloc(value_size);
+		if (!new_val) {
+			return ENOMEM;
+		}
+	}
+	node->key_len = key_size;
+	memcpy(node->key, key, key_size);
+	node->val_len = value_size;
+	node->val = new_val;
+	if (new_val) {
 		memcpy(node->val, value_in, value_size);
 	}
+
+	return 0;
 }
 
 static struct list_node *
 make_new_node(uint8_t *key, uint32_t key_size, void *value_in, uint32_t value_size)
 {
-	/* TODO want to avoid allocating memory in the data path.  For now, we are also allocating
-	 * space for the value, too; but we'd rather avoid copying it.
+	/*
+	 * Normally, we'd want to avoid allocating memory in the data path.
+	 * We could use freelist(s) to speed things up in the typical case.
+	 * But this list implementation exists for validating the API, and
+	 * not for performance.  Other data structures will be used for
+	 * performance as an alternative to this one, so adding freelists
+	 * is a low priority.
 	 */
-	struct list_node *new_node = (struct list_node *)malloc(sizeof(struct list_node) + value_size);
+	struct list_node *new_node = (struct list_node *)malloc(sizeof(struct list_node));
 
 	if (new_node) {
-		init_node(new_node, key, key_size, value_in, value_size);
+		int err = init_node(new_node, key, key_size, value_in, value_size);
+		if (err) {
+			free(new_node);
+			new_node = NULL;
+		}
 	}
 
 	return new_node;
@@ -123,7 +153,9 @@ static void
 delete_node(struct list_node *node)
 {
 	if (node) {
-		/* TODO right now the value is in the node, and they are dynamically allocated */
+		if (node->val) {
+			free(node->val);
+		}
 		free(node);
 	}
 }
@@ -139,8 +171,6 @@ kv_malloc_store_create(struct kv_malloc_bdev *bdev)
 	}
 	INIT_LOCK(&(md->lists_lock));
 	LIST_INIT(&(md->list_head));
-
-	/* TODO init freelists */
 
 	return 0;
 }
@@ -170,15 +200,12 @@ kv_malloc_store_destroy(struct kv_malloc_bdev *bdev)
  * get with key not found
  */
 int
-kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void **value_out,
-	      uint32_t *value_size)
+kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *buf_for_value,
+	      uint32_t buffer_size, uint32_t *value_size)
 {
-
 	int retval = 0;
 	bool test_existence_only = false;
-	if (value_out != NULL) {
-		*value_out = NULL;
-	} else {
+	if (buf_for_value == NULL) {
 		test_existence_only = true;
 	}
 	if (value_size != NULL) {
@@ -192,8 +219,6 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 		return ENODEV;
 	}
 
-#define EXIT_WITH(x) retval = (x); goto done
-
 	RLOCK(&(md->lists_lock));
 	if (LIST_EMPTY(&(md->list_head))) {
 		EXIT_WITH(ENOENT);
@@ -204,9 +229,8 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare == 0) {
 			/* key found */
-			/* TODO want to avoid copy, but need to trust that caller won't modify it */
 			if (!test_existence_only) {
-				*value_out = np->val;
+				memcpy(buf_for_value, np->val, spdk_min(np->val_len, buffer_size));
 				*value_size = np->val_len;
 			}
 			EXIT_WITH(0);
@@ -223,8 +247,6 @@ kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void
 done:
 	UNLOCK(&(md->lists_lock));
 	return retval;
-
-#undef EXIT_WITH
 }
 
 /* TODO unit tests
@@ -237,20 +259,23 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 		 uint32_t value_size)
 {
 	int retval = 0;
+	struct list_node *new_node = NULL;
 	struct store_list_metadata *md = get_metadata_struct(bdev);
 	if (!md) {
 		return ENODEV;
 	}
 
-#define EXIT_WITH(x) retval = (x); goto done
+	/*
+	 * Don't want to allocate memory while holding a lock, so assume that the common
+	 * case is that the key being inserted does not already exist
+	 */
+	new_node = make_new_node(key, key_size, value_in, value_size);
+	if (!new_node) {
+		return ENOMEM;
+	}
 
 	WLOCK(&(md->lists_lock));
-	/* TODO Avoid allocating memory in the data path, and while holding a lock. Add a pre-created freelist. */
 	if (LIST_EMPTY(&(md->list_head))) {
-		struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
-		if (!new_node) {
-			EXIT_WITH(ENOMEM);
-		}
 		LIST_INSERT_HEAD(&(md->list_head), new_node, link);
 		EXIT_WITH(0);
 	}
@@ -260,10 +285,6 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 	for (struct list_node *np = LIST_FIRST(&(md->list_head)); np != NULL; np = LIST_NEXT(np, link)) {
 		int compare = compare_key_to_node(key, key_size, np);
 		if (compare < 0) {
-			struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
-			if (!new_node) {
-				EXIT_WITH(ENOMEM);
-			}
 			LIST_INSERT_BEFORE(np, new_node, link);
 			EXIT_WITH(0);
 		} else if (compare == 0) {
@@ -274,18 +295,16 @@ kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, v
 		prev = np;
 	}
 
-	struct list_node *new_node = make_new_node(key, key_size, value_in, value_size);
-	if (!new_node) {
-		EXIT_WITH(ENOMEM);
-	}
 	LIST_INSERT_AFTER(prev, new_node, link);
 	EXIT_WITH(0);
 
 done:
 	UNLOCK(&(md->lists_lock));
-	return retval;
 
-#undef EXIT_WITH
+	if (retval != 0) {
+		delete_node(new_node);
+	}
+	return retval;
 }
 
 /* TODO unit tests
@@ -301,8 +320,6 @@ kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
 	if (!md) {
 		return ENODEV;
 	}
-
-#define EXIT_WITH(x) retval = (x); goto done
 
 	WLOCK(&(md->lists_lock));
 	if (LIST_EMPTY(&(md->list_head))) {
@@ -330,8 +347,6 @@ kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size)
 done:
 	UNLOCK(&(md->lists_lock));
 	return retval;
-
-#undef EXIT_WITH
 }
 
 int

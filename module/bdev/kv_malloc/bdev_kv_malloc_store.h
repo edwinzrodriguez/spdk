@@ -10,8 +10,8 @@
  * pass NULL for value_out to simply test for existence of a key without actually
  * fetching the value
  */
-int kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void **value_out,
-		  uint32_t *value_size);
+int kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *buf_for_value,
+		  uint32_t buffer_size, uint32_t *value_size);
 int kv_malloc_insert(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *value_in,
 		     uint32_t value_size);
 int kv_malloc_delete(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size);

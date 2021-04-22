@@ -49,10 +49,9 @@ kv_malloc_store_destroy(struct kv_malloc_bdev *bdev)
 	}
 }
 
-/* TODO still need to determine best way to manage values in/out without copy.  What is data lifecycle? */
 int
-kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void **value_out,
-	      uint32_t *value_size)
+kv_malloc_get(struct kv_malloc_bdev *bdev, uint8_t *key, uint32_t key_size, void *buf_for_value,
+	      uint32_t buffer_size, uint32_t *value_size)
 {
 	struct store_avl_metadata *md = get_metadata_struct(bdev);
 	if (!md) {
