@@ -1,7 +1,5 @@
 #!/bin/bash
 
-
-
 SPDK_START_PATH=../
 DPDK_LIB=dpdk/build/lib
 SPDK_LIB=build/lib
@@ -26,11 +24,6 @@ cp $SPDK_START_PATH/$SPDK_LIB/libspdk_sock_posix.a .
 cp $SPDK_START_PATH/$SPDK_LIB/libspdk_jsonrpc.a .
 cp $SPDK_START_PATH/$SPDK_LIB/libspdk_rpc.a .
 
-
-
-
-
-
 ar -x librte_eal.a
 ar -x librte_telemetry.a
 ar -x librte_kvargs.a
@@ -50,7 +43,8 @@ ar -x libspdk_sock_posix.a
 ar -x libspdk_jsonrpc.a
 ar -x libspdk_rpc.a
 
-ar -r $KV_LIB *.o
+#ar -r $KV_LIB *.o
+ar -r $KV_LIB ./*.o
 mv $KV_LIB $SPDK_START_PATH/$SPDK_LIB/
 rm -f librte_eal.a librte_telemetry.a librte_kvargs.a librte_mempool.a librte_ring.a librte_pci.a librte_bus_pci.a libspdk_env_dpdk.a libspdk_log.a libspdk_nvme.a libspdk_util.a libspdk_json.a libspdk_bdev_nvme.a libspdk_rdma.a libspdk_sock.a libspdk_sock_posix.a libspdk_jsonrpc.a libspdk_rpc.a
-rm -f *.o
+rm -f ./*.o

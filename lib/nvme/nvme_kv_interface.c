@@ -718,7 +718,7 @@ int kv_nvme_iterate_close(uint64_t handle, const uint8_t iterator)
 
 	qid = sched_getcpu();
 	if (qid < 0) {
-		KVNVME_WARN("Could not get the CPU Core ID, Using Default 0");
+		SPDK_WARNLOG("Could not get the CPU Core ID, Using Default 0");
 		qid = 0;
 	}
 

@@ -458,38 +458,55 @@ int _kv_nvme_retrieve_async(kv_nvme_t *nvme, kv_pair *kv, int qid)
         LEAVE();
         return io_sequence.status;
 }
+ */
+int _kv_nvme_delete_async(kv_nvme_t *nvme, const kv_pair *kv, int qid)
+{
+	int ret = KV_ERR_DD_INVALID_PARAM;
+	struct spdk_nvme_qpair *qpair = NULL;
+	struct spdk_nvme_kv_key_t key;
 
-int _kv_nvme_delete_async(kv_nvme_t *nvme, const kv_pair *kv, int qid) {
-        int ret = KV_ERR_DD_INVALID_PARAM;
-        struct spdk_nvme_qpair *qpair = NULL;
+	ENTER();
 
-        ENTER();
+	if (!kv || !kv->key.key) {
+		KVNVME_ERR("Invalid Parameters passed");
+		LEAVE();
+		return ret;
+	}
 
-        if(!kv || !kv->key.key) {
-                KVNVME_ERR("Invalid Parameters passed");
-                LEAVE();
-                return ret;
-        }
+	qpair = nvme->qpairs[qid];
 
-        qpair = nvme->qpairs[qid];
+	if (!qpair) {
+		SPDK_ERRLOG("No Matching I/O Queue found for the Passed CPU Core ID");
+		LEAVE();
+		return ret;
+	}
 
-        if(!qpair) {
-                KVNVME_ERR("No Matching I/O Queue found for the Passed CPU Core ID");
-                LEAVE();
-                return ret;
-        }
+	if (kv->key.length > spdk_nvme_kv_get_max_key_len(nvme->ns)) {
+		SPDK_ERRLOG("Key length too large\n");
+		return KV_ERR_DD_INVALID_PARAM;
+	}
+	key.kl = kv->key.length;
+	/*
+	 * TODO TSR handle key length less than 16 bytes. Initialise with zeros?
+	 */
+	memcpy(key.key, kv->key.key, key.kl);
 
-        pthread_spin_lock(&qpair->sq_lock);
-        ret = spdk_nvme_kv_cmd_delete(nvme->ns, qpair, kv->keyspace_id, kv->key.key, kv->key.length, kv->value.length, kv->value.offset, _kv_async_io_complete, (void *)kv, 0, kv->param.io_option.delete_option);
+	/*
+	 * pthread_spin_lock(&qpair->sq_lock);
+	 */
+	ret = spdk_nvme_kv_cmd_delete(nvme->ns, qpair, &key, _kv_async_io_complete, (void *)kv);
 
-        if(ret) {
-                SPDK_ERRLOG("Error in Performing Key Delete on the KV Type SSD: ret=%d\n",ret);
-        }
-        pthread_spin_unlock(&qpair->sq_lock);
-        LEAVE();
-        return ret;
+	if (ret) {
+		SPDK_ERRLOG("Error in Performing Key Delete on the KV Type SSD: ret=%d\n", ret);
+	}
+	/*
+	 * pthread_spin_unlock(&qpair->sq_lock);
+	 */
+
+	LEAVE();
+	return ret;
 }
-
+/*
 int _kv_nvme_format(kv_nvme_t *nvme, int ses) {
         int ret = KV_ERR_DD_INVALID_PARAM;
         uint32_t ns_id = 0;

@@ -342,7 +342,7 @@ static int _kv_env_init(uint32_t process_mem_size_mb, struct spdk_env_opts *opts
 
 	if (opts) {
 		ret = spdk_env_init(opts);
-		SPDK_ERRLOG("mem_size_mb: %u shm_id: %u\n", opts->mem_size, opts->shm_id);
+		SPDK_NOTICELOG("mem_size_mb: %u shm_id: %u\n", opts->mem_size, opts->shm_id);
 	} else {
 		struct spdk_env_opts local_opts;
 		spdk_env_opts_init(&local_opts);
@@ -358,7 +358,7 @@ static int _kv_env_init(uint32_t process_mem_size_mb, struct spdk_env_opts *opts
 		return ret;
 	}
 
-	KVNVME_DEBUG("Initialized the KV API Environment");
+	SPDK_NOTICELOG("Initialized the KV API Environment");
 
 	/*
 	 * ENTER();
@@ -686,8 +686,8 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 			LEAVE();
 			return ret;
 		} else if (nvme->qpairs[queue_id] && (cpu_core_mask & (1ULL << queue_id))) {
-			KVNVME_DEBUG("Successfully Created I/O Queue for the CPU Core ID: %llu with Address: 0x%llx",
-				     queue_id, (unsigned long long)nvme->qpairs[queue_id]);
+			SPDK_NOTICELOG("Successfully Created I/O Queue for the CPU Core ID: %llu with Address: 0x%llx",
+				       queue_id, (unsigned long long)nvme->qpairs[queue_id]);
 			if (sync_mask & (1ULL << queue_id)) {
 				nvme->io_queue_type[queue_id] = SYNC_IO_QUEUE;
 			} else {
@@ -712,8 +712,9 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 
 		nvme->dev_ops.write_async = _kv_nvme_store_async;
 		nvme->dev_ops.read_async = _kv_nvme_retrieve_async;
+
+		nvme->dev_ops.delete_async = _kv_nvme_delete_async;
 		/*
-		 * nvme->dev_ops.delete_async = _kv_nvme_delete_async;
 		 * nvme->dev_ops.format = _kv_nvme_format;
 		 */
 		nvme->dev_ops.get_used_size = _kv_nvme_get_used_size;
@@ -753,8 +754,8 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 		num_cq_threads = options->num_cq_threads;
 		cq_thread_mask = options->cq_thread_mask;
 
-		KVNVME_DEBUG("No. of CQ Threads : %llu, No. of Async I/O Queues: %llu", num_cq_threads,
-			     num_async_queues);
+		SPDK_NOTICELOG("No. of CQ Threads : %llu, No. of Async I/O Queues: %llu", num_cq_threads,
+			       num_async_queues);
 
 
 		if (num_cq_threads > num_async_queues) {
@@ -780,7 +781,7 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 
 	} else {
 		num_cq_threads = def_num_cq_threads;
-		KVNVME_WARN("No. of CQ Threads from Application is not passed, Creating only one CQ thread");
+		SPDK_WARNLOG("No. of CQ Threads from Application is not passed, Creating only one CQ thread");
 	}
 
 	nvme->num_cq_threads = num_cq_threads;
@@ -914,7 +915,7 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 		}
 
 		for (thread_id = 0; thread_id < num_cq_threads; thread_id++) {
-			KVNVME_DEBUG("Queues for Thread %d : %d", thread_id, queues_per_thread[thread_id]);
+			SPDK_NOTICELOG("Queues for Thread %d : %d", thread_id, queues_per_thread[thread_id]);
 		}
 
 		unsigned int async_qpair_start_index = 0;
@@ -958,8 +959,8 @@ int kv_nvme_init(const char *bdf, kv_nvme_io_options *options, unsigned int ssd_
 			cq_thread_args[thread_id]->async_qpair_start_index = async_qpair_start_index;
 			cq_thread_args[thread_id]->num_async_qpairs = queues_per_thread[thread_id];
 
-			KVNVME_DEBUG("Thread ID: %d, async_qpair_start_index: %d, num_async_qpairs: %d", thread_id,
-				     cq_thread_args[thread_id]->async_qpair_start_index, cq_thread_args[thread_id]->num_async_qpairs);
+			SPDK_NOTICELOG("Thread ID: %d, async_qpair_start_index: %d, num_async_qpairs: %d", thread_id,
+				       cq_thread_args[thread_id]->async_qpair_start_index, cq_thread_args[thread_id]->num_async_qpairs);
 
 			if (ssd_type == KV_TYPE_SSD) {
 				ret = pthread_create(&nvme->process_cq_thread[thread_id], NULL, (void *)&kv_nvme_process_cq_thread,
