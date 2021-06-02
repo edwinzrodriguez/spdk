@@ -45,9 +45,9 @@
 #include "spdk/log.h"
 #include "spdk/nvme_kv.h"
 #include "spdk/nvmf_transport.h"
-#include "spdk_internal/skiplist.h"
 
 #include "bdev_kv_null.h"
+#include "skiplist.h"
 
 struct kv_node {
 	/* Metadata for skiplist node. */

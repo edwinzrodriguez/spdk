@@ -29,7 +29,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "spdk_internal/skiplist.h"
+#include "skiplist.h"
 
 #define __SLD_RT_INS(e, n, t, c)
 #define __SLD_NC_INS(n, nn, t, c)
