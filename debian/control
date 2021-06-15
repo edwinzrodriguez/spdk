@@ -1,0 +1,25 @@
+Source: spdk
+Maintainer: Peter Wong <petercw@netapp.com>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.6
+Build-Depends:
+  debhelper (>= 9),
+  build-essential,
+  cmake,
+  libaio-dev,
+  libcunit1-dev,
+  libibverbs-dev,
+  libncurses5-dev,
+  librdmacm-dev,
+  libssl-dev,
+  meson,
+  nasm,
+  ninja-build,
+  uuid-dev
+
+Package: spdk
+Architecture: all
+Depends:
+  ${misc:Depends}
+Description: SPDK

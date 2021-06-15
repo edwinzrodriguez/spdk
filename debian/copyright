@@ -1,0 +1,21 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+
+Files: spdk/*
+Copyright: Various
+License: BSD3 and Intel
+
+Files: spdk/dpdk/*
+Copyright: Various
+License: BSD3 and Intel
+
+Files: spdk/intel-ipsec-mb/*
+Copyright: Various
+License: Intel
+
+Files: *
+Copyright: 2021 NetApp, Inc.
+License: Proprietary
+
+License: Proprietary
+ All rights reserved.  Any use, modification, or distribution is
+ prohibited without prior written consent from NetApp, Inc.

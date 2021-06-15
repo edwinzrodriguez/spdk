@@ -1,0 +1,9 @@
+build/bin/iscsi_tgt           /usr/share/spdk/
+build/bin/iscsi_top           /usr/share/spdk/
+build/bin/nvmf_tgt            /usr/share/spdk/
+build/bin/spdk_dd             /usr/share/spdk/
+build/bin/spdk_lspci          /usr/share/spdk/
+build/bin/spdk_tgt            /usr/share/spdk/
+build/bin/spdk_top            /usr/share/spdk/
+build/bin/spdk_trace          /usr/share/spdk/
+build/bin/spdk_trace_record   /usr/share/spdk/

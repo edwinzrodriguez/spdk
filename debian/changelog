@@ -1,0 +1,5 @@
+spdk (1) unstable; urgency=low
+
+  * Initial check-in to debianize SPDK
+
+ -- Peter Wong <petercw@netapp.com>  Fri, 28 May 2021 17:01:27 -0400
