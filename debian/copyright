@@ -14,8 +14,4 @@ License: Intel
 
 Files: *
 Copyright: 2021 NetApp, Inc.
-License: Proprietary
-
-License: Proprietary
- All rights reserved.  Any use, modification, or distribution is
- prohibited without prior written consent from NetApp, Inc.
+License: BSD
