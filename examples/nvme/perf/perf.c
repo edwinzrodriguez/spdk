@@ -15,6 +15,7 @@
 #include "spdk/queue.h"
 #include "spdk/string.h"
 #include "spdk/nvme_intel.h"
+#include "spdk/nvme_kv.h"
 #include "spdk/histogram_data.h"
 #include "spdk/endian.h"
 #include "spdk/dif.h"
@@ -23,6 +24,7 @@
 #include "spdk/likely.h"
 #include "spdk/sock.h"
 #include "spdk/zipf.h"
+#include "spdk/uuid.h"
 
 #ifdef SPDK_CONFIG_URING
 #include <liburing.h>
@@ -168,6 +170,7 @@ struct perf_task {
 	uint64_t		submit_tsc;
 	bool			is_read;
 	struct spdk_dif_ctx	dif_ctx;
+	struct spdk_nvme_kv_key_t	kv_key;
 #if HAVE_LIBAIO
 	struct iocb		iocb;
 #endif
@@ -780,6 +783,129 @@ register_files(int argc, char **argv)
 #endif
 
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
+static void perf_disconnect_cb(struct spdk_nvme_qpair *qpair, void *ctx);
+static int nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx);
+static void nvme_cleanup_ns_worker_ctx(struct ns_worker_ctx *ns_ctx);
+static __uint128_t last_prod_key;
+static __uint128_t next_prod_key;
+static __uint128_t cons_key;
+
+static void
+kv_setup_payload(struct perf_task *task, uint8_t pattern)
+{
+	void *buf;
+	int rc;
+
+	buf = spdk_dma_zmalloc(g_io_size_bytes, g_io_align, NULL);
+	if (buf == NULL) {
+		fprintf(stderr, "task->buf spdk_dma_zmalloc failed\n");
+		exit(1);
+	}
+	memset(buf, pattern, g_io_size_bytes);
+
+	rc = nvme_perf_allocate_iovs(task, buf, g_io_size_bytes);
+	if (rc < 0) {
+		fprintf(stderr, "perf task failed to allocate iovs\n");
+		spdk_dma_free(buf);
+		exit(1);
+	}
+
+}
+
+static void
+kv_io_complete(void *ctx, const struct spdk_nvme_cpl *cpl)
+{
+	struct perf_task *task = ctx;
+
+	if (spdk_unlikely(spdk_nvme_cpl_is_error(cpl))) {
+		char key_str[KV_KEY_STRING_LEN];
+		spdk_kv_key_fmt_lower(key_str, sizeof(key_str), task->kv_key.kl, task->kv_key.key);
+		if (task->is_read) {
+			RATELIMIT_LOG("Read completed with error (sct=%d, sc=%d, key=%s)\n",
+				      cpl->status.sct, cpl->status.sc, key_str);
+		} else {
+			RATELIMIT_LOG("Write completed with error (sct=%d, sc=%d, key=%s)\n",
+				      cpl->status.sct, cpl->status.sc, key_str);
+		}
+		if (cpl->status.sct == SPDK_NVME_SCT_GENERIC &&
+		    cpl->status.sc == SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT) {
+			/* The namespace was hotplugged.  Stop trying to send I/O to it. */
+			task->ns_ctx->is_draining = true;
+		}
+	}
+	if (!task->is_read) {
+		__uint128_t task_key;
+		memcpy(&task_key, task->kv_key.key, sizeof(task_key));
+		__sync_bool_compare_and_swap(&last_prod_key,
+					     last_prod_key,
+					     spdk_max(last_prod_key, task_key));
+	}
+
+	task_complete(task);
+}
+
+static int
+kv_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
+	     struct ns_entry *entry, uint64_t offset_in_ios)
+{
+	int rc = 0;
+	int qp_num;
+
+	qp_num = ns_ctx->u.nvme.last_qpair;
+	ns_ctx->u.nvme.last_qpair++;
+	if (ns_ctx->u.nvme.last_qpair == ns_ctx->u.nvme.num_active_qpairs) {
+		ns_ctx->u.nvme.last_qpair = 0;
+	}
+
+	if (task->is_read && cons_key < last_prod_key) {
+		__uint128_t task_key = __sync_fetch_and_add(&cons_key, 1);
+		memcpy(task->kv_key.key, &task_key, sizeof(task_key));
+	} else {
+		task->is_read = false;
+		__uint128_t task_key = __sync_fetch_and_add(&next_prod_key, 1);
+		memcpy(task->kv_key.key, &task_key, sizeof(task_key));
+	}
+	task->kv_key.kl = sizeof(task->kv_key.key);
+
+	if (task->is_read) {
+		rc = spdk_nvme_kv_cmd_retrieve(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
+					       &task->kv_key, task->iovs[0].iov_base, entry->io_size_blocks * entry->block_size,
+					       kv_io_complete, task, entry->io_flags);
+	} else {
+		rc = spdk_nvme_kv_cmd_store(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
+					    &task->kv_key, task->iovs[0].iov_base, entry->io_size_blocks * entry->block_size,
+					    kv_io_complete, task, entry->io_flags);
+	}
+	return rc;
+}
+
+static int64_t
+kv_check_io(struct ns_worker_ctx *ns_ctx)
+{
+	int64_t rc;
+
+	rc = spdk_nvme_poll_group_process_completions(ns_ctx->u.nvme.group, 0, perf_disconnect_cb);
+	if (rc < 0) {
+		fprintf(stderr, "NVMe io qpair process completion error\n");
+		exit(1);
+	}
+	return rc;
+}
+
+
+static void
+kv_verify_io(struct perf_task *task, struct ns_entry *entry)
+{
+}
+
+static const struct ns_fn_table kv_fn_table = {
+	.setup_payload		= kv_setup_payload,
+	.submit_io		= kv_submit_io,
+	.check_io		= kv_check_io,
+	.verify_io		= kv_verify_io,
+	.init_ns_worker_ctx	= nvme_init_ns_worker_ctx,
+	.cleanup_ns_worker_ctx	= nvme_cleanup_ns_worker_ctx,
+};
 
 static void
 nvme_setup_payload(struct perf_task *task, uint8_t pattern)
@@ -1252,7 +1378,11 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns)
 	}
 
 	entry->type = ENTRY_TYPE_NVME_NS;
-	entry->fn_table = &nvme_fn_table;
+	if (spdk_nvme_ns_get_csi(ns) == SPDK_NVME_CSI_KV) {
+		entry->fn_table = &kv_fn_table;
+	} else {
+		entry->fn_table = &nvme_fn_table;
+	}
 	entry->u.nvme.ctrlr = ctrlr;
 	entry->u.nvme.ns = ns;
 	entry->num_io_requests = g_queue_depth * entries;
