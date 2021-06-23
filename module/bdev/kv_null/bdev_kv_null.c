@@ -57,6 +57,10 @@ struct kv_node {
 	size_t value_len;
 };
 
+struct kv_null_bdev_io {
+	TAILQ_ENTRY(kv_null_bdev_io) link;
+};
+
 struct kv_null_bdev {
 	struct spdk_bdev	bdev;
 	skiplist_raw		slist;
@@ -67,7 +71,7 @@ struct kv_null_bdev {
 
 struct kv_null_io_channel {
 	struct spdk_poller		*poller;
-	TAILQ_HEAD(, spdk_bdev_io)	io;
+	TAILQ_HEAD(, kv_null_bdev_io)	io;
 };
 
 static TAILQ_HEAD(, kv_null_bdev) g_kv_null_bdev_head = TAILQ_HEAD_INITIALIZER(g_kv_null_bdev_head);
@@ -123,11 +127,14 @@ bdev_kv_null_destruct(void *ctx)
 static bool
 bdev_kv_null_abort_io(struct kv_null_io_channel *ch, struct spdk_bdev_io *bio_to_abort)
 {
+	struct kv_null_bdev_io *null_io;
 	struct spdk_bdev_io *bdev_io;
 
-	TAILQ_FOREACH(bdev_io, &ch->io, module_link) {
+	TAILQ_FOREACH(null_io, &ch->io, link) {
+		bdev_io = spdk_bdev_io_from_ctx(null_io);
+
 		if (bdev_io == bio_to_abort) {
-			TAILQ_REMOVE(&ch->io, bio_to_abort, module_link);
+			TAILQ_REMOVE(&ch->io, null_io, link);
 			spdk_bdev_io_complete(bio_to_abort, SPDK_BDEV_IO_STATUS_ABORTED);
 			return true;
 		}
@@ -577,20 +584,20 @@ static int
 null_io_poll(void *arg)
 {
 	struct kv_null_io_channel		*ch = arg;
-	TAILQ_HEAD(, spdk_bdev_io)	io;
-	struct spdk_bdev_io		*bdev_io;
+	TAILQ_HEAD(, kv_null_bdev_io)	io;
+	struct kv_null_bdev_io		*kv_io;
 
 	TAILQ_INIT(&io);
-	TAILQ_SWAP(&ch->io, &io, spdk_bdev_io, module_link);
+	TAILQ_SWAP(&ch->io, &io, kv_null_bdev_io, link);
 
 	if (TAILQ_EMPTY(&io)) {
 		return SPDK_POLLER_IDLE;
 	}
 
 	while (!TAILQ_EMPTY(&io)) {
-		bdev_io = TAILQ_FIRST(&io);
-		TAILQ_REMOVE(&io, bdev_io, module_link);
-		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
+		kv_io = TAILQ_FIRST(&io);
+		TAILQ_REMOVE(&io, kv_io, link);
+		spdk_bdev_io_complete(spdk_bdev_io_from_ctx(kv_io), SPDK_BDEV_IO_STATUS_SUCCESS);
 	}
 
 	return SPDK_POLLER_BUSY;

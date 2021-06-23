@@ -1488,6 +1488,11 @@ TP 4056 "Namespace Types".
 
 Implement KV null bdev, with rpc calls `bdev_kv_null_create` and `bdev_kv_null_delete` to manage them.
 
+### KV CMD
+
+Tool to run individual KV store/retrieve/exist/delete/list commands
+Details in examples/nvme/kv_cmd/README.md
+
 ### accel_fw
 
 Added API `spdk_accel_submit_copy_crc32c` to perform a CRC32C while copying data.
