@@ -68,6 +68,7 @@ extern "C" {
 /* Linux */
 #ifdef __linux__
 #include <sys/eventfd.h>
+#include <sched.h>
 #endif
 
 #ifdef __cplusplus

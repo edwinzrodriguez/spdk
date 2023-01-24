@@ -1032,7 +1032,7 @@ def bdev_zone_block_delete(client, name):
     return client.call('bdev_zone_block_delete', params)
 
 
-def bdev_rbd_register_cluster(client, name, user=None, config_param=None, config_file=None, key_file=None):
+def bdev_rbd_register_cluster(client, name, user=None, config_param=None, config_file=None, key_file=None, core_mask=None):
     """Create a Rados Cluster object of the Ceph RBD backend.
 
     Args:
@@ -1041,6 +1041,7 @@ def bdev_rbd_register_cluster(client, name, user=None, config_param=None, config
         config_param: map of config keys to values (optional)
         config_file: file path of Ceph configuration file (optional)
         key_file: file path of Ceph key file (optional)
+        core_mask: core mask for librbd IO context threads (optional)
 
     Returns:
         Name of registered Rados Cluster object.
@@ -1055,6 +1056,8 @@ def bdev_rbd_register_cluster(client, name, user=None, config_param=None, config
         params['config_file'] = config_file
     if key_file is not None:
         params['key_file'] = key_file
+    if core_mask is not None:
+        params['core_mask'] = core_mask
 
     return client.call('bdev_rbd_register_cluster', params)
 
